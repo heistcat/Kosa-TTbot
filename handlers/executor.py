@@ -21,7 +21,8 @@ async def my_tasks_handler(message: Message, db: Database):
     """
     Отображение списка задач для исполнителя.
     """
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id).lower()
+    # print(user_id)
     tasks = db.get_tasks_by_user(user_id)
 
     if not tasks:

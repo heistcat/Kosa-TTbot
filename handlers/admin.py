@@ -133,7 +133,7 @@ async def skip_task_photo(message: Message, state: FSMContext):
     )
     await message.delete()  # Удаляем сообщение с выбором
     await message.answer("⬆️⬆️⬆️", reply_markup=ReplyKeyboardRemove())
-    await message.delete()  # Удаляем сообщение с выбором
+    # await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.selected_executors)
 
 
@@ -250,7 +250,7 @@ async def view_task(callback_query: CallbackQuery, db: Database):
 
     # Формируем текст задачи
     assigned_users = ", ".join([
-        f"@{db.get_user_by_id(int(user))['username']}"
+        f"{db.get_user_by_id(int(user))['username']}"
         for user in task['assigned_to'].split(",")
     ])
     task_text = (

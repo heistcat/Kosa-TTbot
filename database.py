@@ -13,7 +13,7 @@ class Database:
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL UNIQUE,
+            user_id TEXT UNIQUE,
             username TEXT,
             name TEXT,
             phone_number TEXT,
@@ -28,7 +28,7 @@ class Database:
             description TEXT,
             deadline TEXT,
             ref_photo TEXT,
-            assigned_to INTEGER,
+            assigned_to TEXT,
             status TEXT DEFAULT 'pending',
             report_text TEXT DEFAULT '_',
             report_photo TEXT DEFAULT '_',
@@ -104,7 +104,9 @@ class Database:
     def get_tasks_by_user(self, user_id):
         """Получение задач, назначенных конкретному пользователю."""
         query = """
-        SELECT * FROM tasks WHERE assigned_to = ? ORDER BY deadline ASC
+        SELECT *
+        FROM tasks
+        WHERE ',' || assigned_to || ',' LIKE '%,' || ? || ',%';
         """
         return self.connection.execute(query, (user_id,)).fetchall()
 
