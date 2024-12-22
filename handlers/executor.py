@@ -16,6 +16,70 @@ class ReportTaskFSM(StatesGroup):
     photo = State()
     report_text = State()
 
+#Создаем FSM
+class AddCommentEFSM(StatesGroup):
+    waiting_for_comment = State()
+    task_id = State()
+
+# В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
+@router.callback_query(F.data.startswith("add_comment_exec:"))
+async def add_comment_handler(callback_query: CallbackQuery, state: FSMContext):
+    task_id = int(callback_query.data.split(":")[1])
+    await state.update_data(task_id=task_id) # сохраняем task_id в FSMContext
+    await callback_query.message.answer("Введите текст комментария:")
+    await state.set_state(AddCommentEFSM.waiting_for_comment)
+
+# Обработчик получения текста комментария (в admin.py и executor.py):
+@router.message(F.text, StateFilter(AddCommentEFSM.waiting_for_comment))
+async def process_comment(message: Message, state: FSMContext, db: Database):
+    comment_text = message.text
+    data = await state.get_data()
+    task_id = data.get("task_id")
+
+    if task_id:
+        db.update_task_comments(task_id, comment_text)
+        await message.answer("Комментарий добавлен.")
+        await state.clear() # очищаем FSM
+        # Обновляем сообщение с задачей, чтобы отобразить новый комментарий (нужно получить task и сформировать текст)
+        task = db.get_task_by_id(task_id)
+        if task:
+            assigned_users = ", ".join([
+                f"{db.get_user_by_id(int(user))['username']}"
+                for user in task['assigned_to'].split(",")
+            ])
+            task_text = (
+                f" <b>Детали задачи:</b>\n\n"
+                f" <b>Название:</b> {task['title']}\n"
+                f" <b>Описание:</b> {task['description']}\n"
+                f" <b>Дедлайн:</b> {task['deadline']}\n"
+                f" <b>Исполнители:</b> {assigned_users}\n"
+                f" <b>Статус:</b> {task['status']}\n\n"
+                
+            )
+            if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
+                formatted_comments = ""
+                for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
+                    formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
+
+                task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+                
+            if message.photo:
+                await message.answer_photo(
+                    photo=message.photo[-1].file_id,
+                    caption=task_text,
+                    reply_markup=task_executor_keyboarda(task_id) if task['status'] == 'done' else task_executor_keyboard(task_id),
+                    parse_mode="HTML"
+                )
+            else:
+                await message.answer(
+                    task_text,
+                    reply_markup=task_executor_keyboarda(task_id) if task['status'] == 'done' else task_executor_keyboard(task_id),
+                    parse_mode="HTML"
+                )
+    else:
+        await message.answer("Произошла ошибка при добавлении комментария.")
+        await state.clear()
+
 @router.message(F.text == "Мои задачи")
 async def my_tasks_handler(message: Message, db: Database):
     """
@@ -72,6 +136,7 @@ async def view_my_task(callback_query: CallbackQuery, db: Database):
     if not task:
         await callback_query.message.edit_text("Задача не найдена.")
         return
+    
 
     # Формируем текст задачи
     task_text = (
@@ -79,8 +144,15 @@ async def view_my_task(callback_query: CallbackQuery, db: Database):
         f"🔹 <b>Название:</b> {task['title']}\n"
         f"🔹 <b>Описание:</b> {task['description']}\n"
         f"🔹 <b>Дедлайн:</b> {task['deadline']}\n"
-        f"🔹 <b>Статус:</b> {task['status']}"
+        f"🔹 <b>Статус:</b> {task['status']}\n\n"
     )
+    if task['comments'] and task['comments'] != '_':
+        formatted_comments = ""
+        for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
+            formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
+
+        task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+
 
     # # Инлайн-кнопки для управления задачей
     # task_keyboard = InlineKeyboardMarkup(
@@ -257,8 +329,15 @@ async def view_my_done_task(callback_query: CallbackQuery, db: Database):
         f"🔹 <b>Название:</b> {task['title']}\n"
         f"🔹 <b>Описание:</b> {task['description']}\n"
         f"🔹 <b>Дедлайн:</b> {task['deadline']}\n"
-        f"🔹 <b>Статус:</b> {task['status']}"
+        f"🔹 <b>Статус:</b> {task['status']}\n\n"
     )
+    if task['comments'] and task['comments'] != '_':
+        formatted_comments = ""
+        for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
+            formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
+
+        task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+
 
     # # Инлайн-кнопки для управления задачей
     # task_keyboard = InlineKeyboardMarkup(

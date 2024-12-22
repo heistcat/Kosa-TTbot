@@ -22,7 +22,7 @@ class Database:
         )
         """)
         self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
+            CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT,
@@ -32,6 +32,7 @@ class Database:
             status TEXT DEFAULT 'pending',
             report_text TEXT DEFAULT '_',
             report_photo TEXT DEFAULT '_',
+            comments TEXT DEFAULT '_',  -- Новое поле для комментариев
             FOREIGN KEY (assigned_to) REFERENCES users(user_id)
         )
         """)
@@ -198,4 +199,16 @@ class Database:
         query = "DELETE FROM tasks WHERE id = ?"
         self.connection.execute(query, (task_id,))
         self.connection.commit()
+
+    # Добавляем метод для обновления комментариев:
+    def update_task_comments(self, task_id, comment):
+        """Добавляет комментарий к задаче."""
+        task = self.get_task_by_id(task_id)
+        if task:
+            old_comments = task['comments'] if task['comments'] != '_' else ''
+            new_comments = f"{old_comments}\n{comment}" if old_comments else comment
+            self.cursor.execute("""
+            UPDATE tasks SET comments = ? WHERE id = ?
+            """, (new_comments, task_id))
+            self.connection.commit()
 

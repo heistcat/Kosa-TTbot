@@ -1,9 +1,8 @@
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from keyboards.reply import role_selection_keyboard, admin_menu_keyboard, executor_menu_keyboard
-
+from keyboards.reply import admin_menu_keyboard, executor_menu_keyboard
 
 from database import Database
 
@@ -12,7 +11,19 @@ router = Router()
 # Машина состояний для авторизации
 class AuthFSM(StatesGroup):
     waiting_for_phone = State()
-    waiting_for_role = State()
+
+async def send_menu(message: Message, db: Database):
+    """Отправляет пользователю меню в зависимости от его роли."""
+    user = db.get_user_by_id(message.from_user.id)
+    if user:
+        if user['role'] == 'admin':
+            await message.answer("Админ-меню:", reply_markup=admin_menu_keyboard)
+        elif user['role'] == 'executor':
+            await message.answer("Меню исполнителя:", reply_markup=executor_menu_keyboard)
+        else:
+            await message.answer("Неизвестная роль.", reply_markup=ReplyKeyboardRemove())
+    else:
+        await message.answer("Пользователь не найден.", reply_markup=ReplyKeyboardRemove())
 
 # Кнопка для запроса номера телефона
 request_phone_keyboard = ReplyKeyboardMarkup(
@@ -53,31 +64,23 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
         elif role == "executor":
             await message.answer("Добро пожаловать обратно, "+user['name']+"!", reply_markup=executor_menu_keyboard)
         return
+    
+    if phone_number == "998998666975":
+    # if phone_number == "998938869216":
+        db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="admin")
+        await message.answer(f"Добро пожаловать в Admin-меню!", 
+                         reply_markup=admin_menu_keyboard)
+    else:
+        db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="executor")
+        await message.answer(f"Добро пожаловать в меню исполнителя!\n\n(если вы админ, то свяжитесь с текущим админом что бы вас назначили админом)\n\n", 
+                         reply_markup=executor_menu_keyboard)
 
-    # Если пользователь не зарегистрирован, добавляем его в базу
-    db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role=None)
-    await message.answer(
-        "Спасибо! Пожалуйста, выберите вашу роль:", 
-        reply_markup=role_selection_keyboard
-    )
-    await state.set_state(AuthFSM.waiting_for_role)
-
- 
-
-# Обработчик выбора роли
-@router.message(F.text.in_(["Админ", "Исполнитель"]), AuthFSM.waiting_for_role)
-async def handle_role_selection(message: Message, state: FSMContext, db: Database):
-    user_id = message.from_user.id
-    role = "admin" if message.text == "Админ" else "executor"
-
-    # Обновление роли в базе данных
-    db.update_user_role(user_id, role)
-
+    # await message.answer(
+    #     "Спасибо! Пожалуйста, выберите вашу роль:", 
+    #     reply_markup=role_selection_keyboard
+    # )
+    
+    # await state.set_state(AuthFSM.waiting_for_role)
     await state.clear()
 
-    # Перенаправляем на соответствующее меню
-    if role == "admin":
-        await message.answer("Добро пожаловать в админ-меню!", reply_markup=admin_menu_keyboard)
-    else:
-        await message.answer("Добро пожаловать в меню исполнителя!", reply_markup=executor_menu_keyboard)
-
+ 

@@ -1,12 +1,14 @@
-from aiogram import Router, F, Bot
+from aiogram import Router, F, Bot, types
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from keyboards.reply import admin_menu_keyboard, skip_photo
-from keyboards.inline import assign_executor_keyboard, task_admin_keyboard, task_admin_keyboarda, task_admin_keyboardb, reassign_executor_keyboard
+from keyboards.reply import admin_menu_keyboard, skip_photo, executor_menu_keyboard
+from keyboards.inline import assign_executor_keyboard, role_selection_keyboard, task_admin_keyboard, task_admin_keyboardb, reassign_executor_keyboard, user_list_keyboard
 from database import Database
 from aiogram.types import CallbackQuery, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from handlers.common import send_menu
+from bot import bot
 
 
 router = Router()
@@ -19,6 +21,96 @@ class CreateTaskFSM(StatesGroup):
     photo = State()
     assign = State()
     selected_executors = State()  # Для хранения выбранных исполнителей
+
+#Создаем FSM
+class AddCommentFSM(StatesGroup):
+    waiting_for_comment = State()
+    task_id = State()
+
+@router.callback_query(F.data.startswith("take_task:"))
+async def take_task_handler(callback_query: CallbackQuery):
+    db = Database()
+    user_id = callback_query.message.from_user.id
+    task_id = callback_query.data.split(":")[1]
+    
+    # Проверяем, есть ли у пользователя задачи со статусом "is_on_work"
+    tasks = db.get_tasks_by_user(user_id)
+    is_busy = any(task["status"] == "is_on_work" for task in tasks)
+    # is_done = any(task["status"] == "done" for task in tasks)
+    task_status = any(task["status"] for task in tasks) 
+    
+    if is_busy:
+        # Если пользователь уже работает над задачей
+        await callback_query.message.answer(
+            "Вы уже работаете над задачей, завершите её, чтобы перейти к следующей!",
+            reply_markup=task_admin_keyboard(task_id, task_status)
+        )
+    else:
+        # Если пользователь свободен, обновляем статус задачи
+        db.update_task_status(task_id, "is_on_work")
+        task_status = db.get_task_by_id(task_id)["status"]
+        print(task_status)
+        # await callback_query.message.delete()
+        await callback_query.message.edit_reply_markup(reply_markup=task_admin_keyboard(task_id, task_status))
+
+# В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
+@router.callback_query(F.data.startswith("add_comment:"))
+async def add_comment_handler(callback_query: CallbackQuery, state: FSMContext):
+    task_id = int(callback_query.data.split(":")[1])
+    await state.update_data(task_id=task_id) # сохраняем task_id в FSMContext
+    await callback_query.message.answer("Введите текст комментария:")
+    await state.set_state(AddCommentFSM.waiting_for_comment)
+
+# Обработчик получения текста комментария (в admin.py и executor.py):
+@router.message(F.text, StateFilter(AddCommentFSM.waiting_for_comment))
+async def process_comment(message: Message, state: FSMContext, db: Database):
+    comment_text = message.text
+    data = await state.get_data()
+    task_id = data.get("task_id")
+
+    if task_id:
+        db.update_task_comments(task_id, comment_text)
+        await message.answer("Комментарий добавлен.")
+        await state.clear() # очищаем FSM
+        # Обновляем сообщение с задачей, чтобы отобразить новый комментарий (нужно получить task и сформировать текст)
+        task = db.get_task_by_id(task_id)
+        if task:
+            assigned_users = ", ".join([
+                f"{db.get_user_by_id(int(user))['username']}"
+                for user in task['assigned_to'].split(",")
+            ])
+            task_text = (
+                f" <b>Детали задачи:</b>\n\n"
+                f" <b>Название:</b> {task['title']}\n"
+                f" <b>Описание:</b> {task['description']}\n"
+                f" <b>Дедлайн:</b> {task['deadline']}\n"
+                f" <b>Исполнители:</b> {assigned_users}\n"
+                f" <b>Статус:</b> {task['status']}\n\n"
+            )
+            if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
+                formatted_comments = ""
+                for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
+                    formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
+
+                task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+
+            if message.photo:
+                await message.answer_photo(
+                    photo=message.photo[-1].file_id,
+                    caption=task_text,
+                    reply_markup=task_admin_keyboard(task_id, task['status']),
+                    parse_mode="HTML"
+                )
+            else:
+                await message.answer(
+                    task_text,
+                    reply_markup=task_admin_keyboard(task_id, task['status']),
+                    parse_mode="HTML"
+                )
+    else:
+        await message.answer("Произошла ошибка при добавлении комментария.")
+        await state.clear()
+
 
 
 async def notify_executors(bot: Bot, executors: list[int], task_title: str, task_deadline: str):
@@ -185,14 +277,9 @@ async def admin_statistics(message: Message, db: Database):
     stats = db.get_all_tasks().count # Предполагаемая функция получения статистики
     # done_tasks = [stat for stat in stats if stat['status'] == 'done']
     # completed_tasks = [stat for stat in stats if stat['status'] == 'completed']
-    overdue_tasks = 'under development'
 
     response = (
         f'в зарзарботке'
-        # f"Всего задач: {stats}\n"
-        # f"Завершено: {[completed for completed in completed_tasks]}\n"
-        # f"Выполнено: {[done for done in done_tasks]}\n"
-        # f"Просрочено: {overdue_tasks}"
     )
     await message.answer(response)
     await message.delete()  # Удаляем сообщение с выбором
@@ -238,52 +325,48 @@ async def view_tasks(message: Message, db: Database):
 
 @router.callback_query(F.data.startswith("view_task:"))
 async def view_task(callback_query: CallbackQuery, db: Database):
-    """
-    Отображение деталей задачи с инлайн-кнопками и кнопкой "Назад к списку".
-    """
-    task_id = int(callback_query.data.split(":")[1])  # Получаем ID задачи
+    task_id = int(callback_query.data.split(":")[1])
     task = db.get_task_by_id(task_id)
 
     if not task:
         await callback_query.message.edit_text("Задача не найдена.")
         return
 
-    # Формируем текст задачи
     assigned_users = ", ".join([
         f"{db.get_user_by_id(int(user))['username']}"
         for user in task['assigned_to'].split(",")
     ])
+
+    # Формируем текст задачи с учетом комментариев
     task_text = (
-        f"📋 <b>Детали задачи:</b>\n\n"
-        f"🔹 <b>Название:</b> {task['title']}\n"
-        f"🔹 <b>Описание:</b> {task['description']}\n"
-        f"🔹 <b>Дедлайн:</b> {task['deadline']}\n"
-        f"🔹 <b>Исполнители:</b> {assigned_users}\n"
-        f"🔹 <b>Статус:</b> {task['status']}"
+        f"<b>Детали задачи:</b>\n\n"
+        f"<b>Название:</b> {task['title']}\n"
+        f"<b>Описание:</b> {task['description']}\n"
+        f"<b>Дедлайн:</b> {task['deadline']}\n"
+        f"<b>Исполнители:</b> {assigned_users}\n"
+        f"<b>Статус:</b> {task['status']}\n\n"
     )
+    if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
+        formatted_comments = ""
+        for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
+            formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
 
-   
-    # Удаляем старое сообщение (список задач) и отправляем новое с задачей
-    # await callback_query.message.delete()
+        task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
 
-    # Отправляем сообщение с задачей и фото (если есть)
     if task["ref_photo"]:
         await callback_query.message.answer_photo(
-            photo=task["ref_photo"],  # Идентификатор файла фотографии
+            photo=task["ref_photo"],
             caption=task_text,
-            reply_markup=task_admin_keyboarda(task_id, task['status']) if task['status'] == 'done' else task_admin_keyboard(task_id, task['status']),
+            reply_markup=task_admin_keyboard(task_id, task['status']),
             parse_mode="HTML"
         )
     else:
         await callback_query.message.answer(
             task_text,
-            reply_markup=task_admin_keyboarda(task_id, task['status']) if task['status'] == 'done' else task_admin_keyboard(task_id, task['status']),
+            reply_markup=task_admin_keyboard(task_id, task['status']),
             parse_mode="HTML"
         )
-    
-    # Удаляем старое сообщение (список задач) и отправляем новое с задачей
     await callback_query.message.delete()
-
 
 
 @router.callback_query(F.data == "back_to_task_list")
@@ -376,12 +459,15 @@ async def filter_tasks(callback_query: CallbackQuery, db: Database):
         )
         for task in filtered_tasks
     ]
+    back_button = [
+        InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")
+    ]
 
     # Генерируем клавиатуру
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [button] for button in task_buttons  # Каждая кнопка задачи в отдельной строке
-        ]
+            [button] for button in task_buttons # Каждая кнопка задачи в отдельной строке
+        ]+[back_button]
     )
 
     # Редактируем сообщение с новой клавиатурой
@@ -406,10 +492,10 @@ async def reassign_task_handler(callback_query: CallbackQuery, state: FSMContext
 
     # Отправляем сообщение с инлайн-кнопками исполнителей
     if callback_query.message.text:
-            await callback_query.message.edit_text(
-                "Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
-                reply_markup=reassign_executor_keyboard(executors, task_id, allow_finish=True)
-            )
+        await callback_query.message.edit_text(
+            "Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
+            reply_markup=reassign_executor_keyboard(executors, task_id, allow_finish=True)
+        )
     elif callback_query.message.caption:  # Если сообщение — фото
         await callback_query.message.edit_caption(
             "Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
@@ -443,25 +529,6 @@ async def toggle_executor(callback_query: CallbackQuery, state: FSMContext):
     # Сохраняем обновленный список
     await state.update_data(selected_executors=selected_executors)
 
-
-
-
-
-# @router.callback_query(F.data.startswith("reassign_"))
-# async def reassign_executor(callback_query, state: FSMContext):
-#     executor_id = callback_query.data.split("_")[1]
-#     data = await state.get_data()
-#     selected_executors = data.get("selected_executors", [])
-    
-#     if executor_id not in selected_executors:
-#         selected_executors.append(executor_id)  # Добавляем исполнителя
-#         await callback_query.answer("Исполнитель добавлен!")
-#     else:
-#         selected_executors.remove(executor_id)  # Убираем исполнителя
-#         await callback_query.answer("Исполнитель удален!")
-    
-#     await state.set_state(selected_executors)
-#     print(f'{selected_executors}')
 
 @router.callback_query(F.data == "finish_selectionw")
 async def finish_executor_selection(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
@@ -538,3 +605,56 @@ async def delete_task_handler(callback_query: CallbackQuery):
     await callback_query.message.delete()  # Удаляем сообщение с выбором
 
 
+@router.callback_query(F.data == "view_users")
+async def view_users_handler(callback_query: CallbackQuery, db: Database):
+    """Обработчик для просмотра списка пользователей."""
+    users = db.get_all_users()
+    if users:
+        await callback_query.message.edit_text("Список пользователей:", reply_markup=user_list_keyboard(users))
+    else:
+        await callback_query.message.edit_text("Пользователи не найдены.")
+
+@router.callback_query(F.data.startswith("user_info:")) # Обработчик для информации о пользователе
+async def user_info_handler(callback_query: CallbackQuery, db: Database):
+    user_id = int(callback_query.data.split(":")[1])
+    user = db.get_user_by_id(user_id)
+    if user:
+        await callback_query.message.edit_text(f"Информация о пользователе:\nUsername: {user['username']}\nRole: {user['role']}", reply_markup=role_selection_keyboard(user_id))
+    else:
+        await callback_query.message.edit_text("Пользователь не найден.")
+
+
+@router.callback_query(F.data.startswith("set_role:"))
+async def set_user_role_handler(callback_query: CallbackQuery, db: Database):
+    """Обработчик для установки роли пользователя."""
+    _, new_role, user_id = callback_query.data.split(":")
+    user_id = int(user_id)
+    db.update_user_role(user_id, new_role)
+
+    # Получаем информацию о пользователе, которому изменили роль
+    user = db.get_user_by_id(user_id)
+
+    if user:
+        try:
+            # Отправляем сообщение непосредственно пользователю с новой клавиатурой
+            await bot.send_message(user_id, f"Ваша роль изменена на {"Исполнитель" if new_role == "executor" else "Админ"}.", reply_markup=admin_menu_keyboard if new_role == "admin" else executor_menu_keyboard)
+            await send_menu(types.Message(message_id=callback_query.message.message_id, from_user=types.User(id=user_id), chat=types.Chat(id=user_id)), db)
+        except Exception as e:
+            await callback_query.message.edit_text(f"Произошла ошибка: {e}")
+
+        await callback_query.message.edit_text(f"Роль пользователя с ID {user_id} успешно изменена на {"Исполнитель" if new_role == "executor" else "Админ"}.")
+    else:
+        await callback_query.message.edit_text("Пользователь не найден.")
+
+@router.callback_query(F.data == "back_to_users")
+async def back_to_users_handler(callback_query: CallbackQuery, db: Database):
+    """Обработчик для возврата к списку пользователей."""
+    users = db.get_all_users()
+    if users:
+        await callback_query.message.edit_text("Список пользователей:", reply_markup=user_list_keyboard(users))
+    else:
+        await callback_query.message.edit_text("Пользователи не найдены.")
+
+@router.message(F.text == "Список пользователей")
+async def view_users_menu_handler(message: Message):
+    await message.answer("Управление пользователями", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Посмотреть список пользователей", callback_data="view_users")]]))
