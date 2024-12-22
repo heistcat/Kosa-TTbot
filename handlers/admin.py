@@ -637,7 +637,7 @@ async def set_user_role_handler(callback_query: CallbackQuery, db: Database):
     if user:
         try:
             # Отправляем сообщение непосредственно пользователю с новой клавиатурой
-            await bot.send_message(user_id, f"Ваша роль изменена на {"Исполнитель" if new_role == "executor" else "Админ"}.", reply_markup=admin_menu_keyboard if new_role == "admin" else executor_menu_keyboard)
+            await bot.send_message(user_id, f"Ваша роль изменена на {'Исполнитель' if new_role == 'executor' else 'Админ'}.", reply_markup=admin_menu_keyboard if new_role == 'admin' else executor_menu_keyboard)
             await send_menu(types.Message(message_id=callback_query.message.message_id, from_user=types.User(id=user_id), chat=types.Chat(id=user_id)), db)
         except Exception as e:
             await callback_query.message.edit_text(f"Произошла ошибка: {e}")
