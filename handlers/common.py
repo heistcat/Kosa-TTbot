@@ -16,9 +16,9 @@ async def send_menu(message: Message, db: Database):
     """Отправляет пользователю меню в зависимости от его роли."""
     user = db.get_user_by_id(message.from_user.id)
     if user:
-        if user['role'] == 'admin':
+        if user['role'] == 'Админ':
             await message.answer("Админ-меню:", reply_markup=admin_menu_keyboard)
-        elif user['role'] == 'executor':
+        elif user['role'] == 'Исполнитель':
             await message.answer("Меню исполнителя:", reply_markup=executor_menu_keyboard)
         else:
             await message.answer("Неизвестная роль.", reply_markup=ReplyKeyboardRemove())
@@ -59,19 +59,19 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
     if user:
         # Пользователь уже зарегистрирован, переходим к его меню по роли
         role = user["role"]
-        if role == "admin":
+        if role == "Админ":
             await message.answer("Добро пожаловать обратно, "+user['name']+"!", reply_markup=admin_menu_keyboard)
-        elif role == "executor":
+        elif role == "Исполнитель":
             await message.answer("Добро пожаловать обратно, "+user['name']+"!", reply_markup=executor_menu_keyboard)
         return
     
     # if phone_number == "998998666975":
     if phone_number == "998938869216":
-        db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="admin")
+        db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Админ")
         await message.answer(f"Добро пожаловать в Admin-меню!", 
                          reply_markup=admin_menu_keyboard)
     else:
-        db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="executor")
+        db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Исполнитель")
         await message.answer(f"Добро пожаловать в меню исполнителя!\n\n(если вы админ, то свяжитесь с текущим админом что бы вас назначили админом)\n\n", 
                          reply_markup=executor_menu_keyboard)
 

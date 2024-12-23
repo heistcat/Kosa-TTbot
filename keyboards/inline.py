@@ -146,8 +146,8 @@ def user_list_keyboard(users):
 def role_selection_keyboard(user_id):
     """Создает клавиатуру для выбора роли."""
     buttons = [
-        [InlineKeyboardButton(text="Админ", callback_data=f"set_role:admin:{user_id}")],
-        [InlineKeyboardButton(text="Исполнитель", callback_data=f"set_role:executor:{user_id}")],
+        [InlineKeyboardButton(text="Админ", callback_data=f"set_role:Админ:{user_id}")],
+        [InlineKeyboardButton(text="Исполнитель", callback_data=f"set_role:Исполнитель:{user_id}")],
         [InlineKeyboardButton(text="Назад к списку пользователей", callback_data=f"back_to_users")] # Кнопка "Назад"
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
