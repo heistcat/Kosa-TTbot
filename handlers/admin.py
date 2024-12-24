@@ -430,7 +430,13 @@ async def filter_tasks(callback_query: CallbackQuery, db: Database):
     if not filtered_tasks:
         await callback_query.message.edit_text("Нет задач с выбранным статусом.")
         return
-    keyboard = create_task_list_keyboard(filtered_tasks)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"{task['title'][:25]}...",  # Укороченное название задачи
+            callback_data=f"view_task:{task['id']}"
+        )]for task in tasks if not task['status'] == 'pending' and not task['status'] == 'is_on_work'
+    ] )
     back_button = [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")]
     keyboard.inline_keyboard.append(back_button)
     await callback_query.message.edit_text(f" Задачи со статусом '{status}':", reply_markup=keyboard)
