@@ -52,6 +52,9 @@ class Database:
         """, (user_id,))
         self.connection.commit()
 
+    def get_su_by_id(self, user_id):
+        query = "SELECT * FROM su WHERE user_id = ?"
+        return self.connection.execute(query, (user_id,)).fetchone()
 
     # --- Методы для работы с пользователями ---
     def register_user(self, user_id, username, name, phone_number, birth_date, role):
