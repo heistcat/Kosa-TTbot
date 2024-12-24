@@ -31,16 +31,3 @@ executor_menu_keyboard = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
-
-
-superuser_menu_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="Создать задачу")],
-        [
-            KeyboardButton(text="Просмотр задач"),
-            KeyboardButton(text="Статистика")
-        ],
-        [KeyboardButton(text="Управление пользователями")] # Новая кнопка
-    ],
-    resize_keyboard=True
-)

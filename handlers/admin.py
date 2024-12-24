@@ -175,27 +175,6 @@ async def handle_task_title(message: Message, state: FSMContext):
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.description)
 
-@router.message(F.text.startswith("/ban"))
-async def ban_command(message: Message, bot: Bot, db: Database):
-    if not db.is_super_user(message.from_user.id):
-        await message.reply("У вас нет прав для выполнения этой команды.")
-        return
-
-    try:
-        user_id_to_ban = int(message.text.split()[1]) # Получаем ID пользователя из сообщения
-    except (ValueError, IndexError):
-        await message.reply("Неверный формат команды. Используйте: /ban <user_id>")
-        return
-
-    if db.ban_user(user_id_to_ban):
-        try:
-            await bot.send_message(user_id_to_ban, "Вы были забанены администратором.")
-        except:
-            pass # Если пользователь заблокировал бота, сообщение не отправится, это нормально
-        await message.reply(f"Пользователь с ID {user_id_to_ban} успешно забанен.")
-    else:
-        await message.reply("Произошла ошибка при бане пользователя.")
-
 
 # Ввод описания задачи
 @router.message(F.text, StateFilter(CreateTaskFSM.description))
@@ -204,33 +183,7 @@ async def handle_task_description(message: Message, state: FSMContext):
     await message.answer("Введите дедлайн задачи (в формате ДД-ММ):")
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.deadline)
-
-@router.message(F.text.startswith("/unban"))
-async def unban_command(message: Message, bot: Bot, db: Database):
-    if not db.is_super_user(message.from_user.id):
-        await message.reply("У вас нет прав для выполнения этой команды.")
-        return
-
-    try:
-        user_id_to_unban = int(message.text.split()[1]) # Получаем ID пользователя из сообщения
-    except (ValueError, IndexError):
-        await message.reply("Неверный формат команды. Используйте: /unban <user_id>")
-        return
-
-    if db.unban_user(user_id_to_unban):
-        await message.reply(f"Пользователь с ID {user_id_to_unban} успешно разбанен.")
-    else:
-        await message.reply("Произошла ошибка при разбане пользователя.")
-
-
-@router.message() # Фильтр для всех сообщений
-async def check_ban_status(message: Message, db: Database):
-    if db.is_user_banned(message.from_user.id):
-        await message.reply("Вы забанены и не можете использовать этого бота.")
-        return # Прекращаем обработку сообщения
-
     
-
 # Ввод дедлайна задачи
 @router.message(F.text, StateFilter(CreateTaskFSM.deadline))
 async def handle_task_deadline(message: Message, state: FSMContext):

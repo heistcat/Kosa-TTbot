@@ -46,56 +46,6 @@ class Database:
         self.connection.commit()
 
 
-    def add_ban_column(self):  # Добавление столбца is_banned, если его нет
-        try:
-            self.cursor.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
-            self.connection.commit()
-            print("Столбец is_banned успешно добавлен.")
-        except sqlite3.OperationalError as e:
-            if "duplicate column name: is_banned" in str(e):
-                print("Столбец is_banned уже существует.")
-            else:
-                print(f"Ошибка при добавлении столбца: {e}")
-
-    def ban_user(self, user_id):
-        try:
-            self.cursor.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
-            self.connection.commit()
-            return True
-        except sqlite3.Error as e:
-            print(f"Ошибка при бане пользователя: {e}")
-            return False
-
-    def unban_user(self, user_id):
-        try:
-            self.cursor.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
-            self.connection.commit()
-            return True
-        except sqlite3.Error as e:
-            print(f"Ошибка при разбане пользователя: {e}")
-            return False
-
-    def is_user_banned(self, user_id):
-        try:
-            self.cursor.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
-            result = self.cursor.fetchone()
-            if result:
-                return bool(result[0])  # Преобразуем 0/1 в True/False
-            return False  # Пользователь не найден, считаем, что не забанен
-        except sqlite3.Error as e:
-            print(f"Ошибка при проверке бана: {e}")
-            return False
-        
-    def is_super_user(self, user_id):
-        try:
-            self.cursor.execute("SELECT COUNT(*) FROM su WHERE user_id = ?", (user_id,))
-            result = self.cursor.fetchone()[0]
-            return result > 0  # Возвращает True, если пользователь есть в таблице su, иначе False
-        except sqlite3.Error as e:
-            print(f"Ошибка при проверке суперпользователя: {e}")
-            return False
-
-
     def register_su(self, user_id):
         self.cursor.execute("""
         INSERT INTO su (user_id) VALUES (?)
