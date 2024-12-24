@@ -65,8 +65,7 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
             await message.answer("Добро пожаловать обратно, "+user['name']+"!", reply_markup=executor_menu_keyboard)
         return
     
-    # if phone_number == "998998666975":
-    if phone_number == "998938869216":
+    if phone_number == "998938869216" or phone_number == "998998666975":
         db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Админ")
         await message.answer(f"Добро пожаловать в Admin-меню!", 
                          reply_markup=admin_menu_keyboard)
@@ -75,12 +74,6 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
         await message.answer(f"Добро пожаловать в меню исполнителя!\n\n(если вы админ, то свяжитесь с текущим админом что бы вас назначили админом)\n\n", 
                          reply_markup=executor_menu_keyboard)
 
-    # await message.answer(
-    #     "Спасибо! Пожалуйста, выберите вашу роль:", 
-    #     reply_markup=role_selection_keyboard
-    # )
-    
-    # await state.set_state(AuthFSM.waiting_for_role)
     await state.clear()
 
  

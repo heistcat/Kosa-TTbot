@@ -27,30 +27,46 @@ class AddCommentFSM(StatesGroup):
     waiting_for_comment = State()
     task_id = State()
 
+async def format_task_text(task: dict, db: Database) -> str:
+    """Форматирует текст задачи, включая комментарии и исполнителей."""
+    if task['assigned_to']:
+        assigned_user_ids = [int(user_id) for user_id in task['assigned_to'].split(",")]
+        assigned_users = [db.get_user_by_id(user_id)['username'] for user_id in assigned_user_ids if db.get_user_by_id(user_id)]
+        assigned_users_str = ", ".join(assigned_users)
+    else:
+        assigned_users_str = "Не назначено"
+
+    task_text = (
+        f"<b>Детали задачи:</b>\n\n"
+        f"<b>Название:</b> {task['title']}\n"
+        f"<b>Описание:</b> {task['description']}\n"
+        f"<b>Дедлайн:</b> {task['deadline']}\n"
+        f"<b>Исполнители:</b> {assigned_users_str}\n"
+        f"<b>Статус:</b> {task['status']}\n\n"
+    )
+
+    if task['comments'] and task['comments'] != '_':
+        formatted_comments = ""
+        for comment in task['comments'].strip().split('\n'):
+            formatted_comments += f"<blockquote>{comment}</blockquote>\n"
+        task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+
+    return task_text
+
 @router.callback_query(F.data.startswith("take_task:"))
 async def take_task_handler(callback_query: CallbackQuery):
     db = Database()
     user_id = callback_query.message.from_user.id
     task_id = callback_query.data.split(":")[1]
-    
-    # Проверяем, есть ли у пользователя задачи со статусом "is_on_work"
+
     tasks = db.get_tasks_by_user(user_id)
-    is_busy = any(task["status"] == "is_on_work" for task in tasks)
-    # is_done = any(task["status"] == "done" for task in tasks)
-    task_status = any(task["status"] for task in tasks) 
-    
-    if is_busy:
-        # Если пользователь уже работает над задачей
-        await callback_query.message.answer(
-            "Вы уже работаете над задачей, завершите её, чтобы перейти к следующей!",
-            reply_markup=task_admin_keyboard(task_id, task_status)
-        )
+    is_working = any(task["status"] == "is_on_work" for task in tasks)
+
+    if is_working:
+        await callback_query.answer("Вы уже работаете над задачей, завершите её, чтобы перейти к следующей!", show_alert=True)
     else:
-        # Если пользователь свободен, обновляем статус задачи
         db.update_task_status(task_id, "is_on_work")
         task_status = db.get_task_by_id(task_id)["status"]
-        print(task_status)
-        # await callback_query.message.delete()
         await callback_query.message.edit_reply_markup(reply_markup=task_admin_keyboard(task_id, task_status))
 
 # В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
@@ -111,25 +127,19 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
         await message.answer("Произошла ошибка при добавлении комментария.")
         await state.clear()
 
+    if task:
+        task_text = await format_task_text(task, db) # Используем функцию форматирования
+
+        if message.photo:
+            await message.answer_photo(photo=message.photo[-1].file_id, caption=task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
+        else:
+            await message.answer(task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
+
 
 
 async def notify_executors(bot: Bot, executors: list[int], task_title: str, task_deadline: str):
-    """
-    Отправка уведомлений исполнителям о новой задаче или переназначении.
-    
-    :param bot: Экземпляр бота.
-    :param executors: Список Telegram ID исполнителей.
-    :param task_id: ID задачи.
-    :param task_title: Название задачи.
-    :param task_deadline: Дедлайн задачи.
-    """
     for executor_id in executors:
         try:
-            # Создаем инлайн-кнопку для быстрого перехода к задаче
-            # keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            #     [InlineKeyboardButton(text="Посмотреть задачу", callback_data=f"view_task:{task_id}")]
-            # ])
-            
             # Отправляем уведомление
             await bot.send_message(
                 chat_id=executor_id,
@@ -275,8 +285,6 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
 @router.message(F.text == "Статистика")
 async def admin_statistics(message: Message, db: Database):
     stats = db.get_all_tasks().count # Предполагаемая функция получения статистики
-    # done_tasks = [stat for stat in stats if stat['status'] == 'done']
-    # completed_tasks = [stat for stat in stats if stat['status'] == 'completed']
 
     response = (
         f'в зарзарботке'
@@ -296,6 +304,8 @@ async def view_tasks(message: Message, db: Database):
     if not tasks:
         await message.answer("Нет задач.")
         return
+    
+    
 
     # Создаем инлайн-клавиатуру с задачами
     task_buttons = [
@@ -332,10 +342,35 @@ async def view_task(callback_query: CallbackQuery, db: Database):
         await callback_query.message.edit_text("Задача не найдена.")
         return
 
-    assigned_users = ", ".join([
-        f"{db.get_user_by_id(int(user))['username']}"
-        for user in task['assigned_to'].split(",")
-    ])
+    task_text = await format_task_text(task, db) # Используем функцию форматирования
+
+    if task["ref_photo"]:
+        await callback_query.message.answer_photo(photo=task["ref_photo"], caption=task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
+    else:
+        await callback_query.message.answer(task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
+    await callback_query.message.delete()
+    task_id = int(callback_query.data.split(":")[1])
+    task = db.get_task_by_id(task_id)
+
+    if not task:
+        await callback_query.message.edit_text("Задача не найдена.")
+        return
+
+    if task['assigned_to']: # Проверяем, есть ли вообще назначенные исполнители
+        assigned_users_list = task['assigned_to'].split(",")
+        valid_assigned_users = []
+        for user_id_str in assigned_users_list:
+            try:
+                user_id = int(user_id_str)
+                user = db.get_user_by_id(user_id)
+                if user:  # Проверяем, существует ли пользователь в базе
+                    valid_assigned_users.append(user['username'])
+            except ValueError:
+                pass
+
+        assigned_users = ", ".join(valid_assigned_users)
+    else:
+        assigned_users = "Не назначено"
 
     # Формируем текст задачи с учетом комментариев
     task_text = (
@@ -352,6 +387,8 @@ async def view_task(callback_query: CallbackQuery, db: Database):
             formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
 
         task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+    
+    await callback_query.message.delete()
 
     if task["ref_photo"]:
         await callback_query.message.answer_photo(
@@ -366,113 +403,54 @@ async def view_task(callback_query: CallbackQuery, db: Database):
             reply_markup=task_admin_keyboard(task_id, task['status']),
             parse_mode="HTML"
         )
-    await callback_query.message.delete()
+    
+
+def create_task_list_keyboard(tasks):
+    task_buttons = [
+        InlineKeyboardButton(
+            text=f"{task['title'][:25]}...",
+            callback_data=f"view_task:{task['id']}"
+        )
+        for task in tasks
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[[button] for button in task_buttons])
+
 
 
 @router.callback_query(F.data == "back_to_task_list")
 async def back_to_task_list(callback_query: CallbackQuery, db: Database):
-    """
-    Возвращение к списку задач.
-    """
     tasks = db.get_all_tasks()
-
     if not tasks:
         await callback_query.message.edit_text("Нет задач.")
         return
+    keyboard = create_task_list_keyboard(tasks)
+    await callback_query.message.edit_text(" Все задачи:", reply_markup=keyboard)
 
-    # Создаем кнопки для задач
-    task_buttons = [
-        InlineKeyboardButton(
-            text=f"{task['title'][:25]}...",  # Укороченное название задачи
-            callback_data=f"view_task:{task['id']}"
-        )
-        for task in tasks if not task['status'] == 'completed' and not task['status']=='done'
-    ]
-
-    # Кнопки фильтрации
-    filter_buttons = [
-        InlineKeyboardButton(text="✅ Выполненные задачи", callback_data="filter:done"),
-        InlineKeyboardButton(text="🛑 Завершенные задачи", callback_data="filter:completed")
-    ]
-
-    # Формируем клавиатуру
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [button] for button in task_buttons
-        ] + [filter_buttons]  # Добавляем фильтры отдельной строкой
-    )
-
-    # Удаляем старое сообщение и отправляем список задач
-    await callback_query.message.delete()
-    await callback_query.message.answer("📋 Все задачи:", reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("back_to_filter_list:"))
 async def back_to_filter_list(callback_query: CallbackQuery, db: Database):
-    status = callback_query.data.split(":")[1]  # Получаем статус из callback_data
+    status = callback_query.data.split(":")[1]
     tasks = db.get_all_tasks()
-
-    # Фильтруем задачи по статусу
     filtered_tasks = [task for task in tasks if task['status'] == status]
-
-    # Создаем кнопки для отфильтрованных задач
-    task_buttons = [
-        InlineKeyboardButton(
-            text=f"{task['title'][:25]}...",  # Укороченное название задачи
-            callback_data=f"view_task:{task['id']}"
-        )
-        for task in filtered_tasks
-    ]
-
-    # Генерируем клавиатуру
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [button] for button in task_buttons  # Каждая кнопка задачи в отдельной строке
-        ]
-    )
-
-
-    await callback_query.message.delete()
-    # Редактируем сообщение с новой клавиатурой
-    await callback_query.message.answer(f"📋 Задачи со статусом '{status}':", reply_markup=keyboard)
-
-@router.callback_query(F.data.startswith("filter:"))
-async def filter_tasks(callback_query: CallbackQuery, db: Database):
-    """
-    Фильтрация задач по статусу.
-    """
-    status = callback_query.data.split(":")[1]  # Получаем статус из callback_data
-    tasks = db.get_all_tasks()
-
-    # Фильтруем задачи по статусу
-    filtered_tasks = [task for task in tasks if task['status'] == status]
-
     if not filtered_tasks:
         await callback_query.message.edit_text("Нет задач с выбранным статусом.")
         return
+    keyboard = create_task_list_keyboard(filtered_tasks)
+    await callback_query.message.edit_text(f" Задачи со статусом '{status}':", reply_markup=keyboard)
 
-    # Создаем кнопки для отфильтрованных задач
-    task_buttons = [
-        InlineKeyboardButton(
-            text=f"{task['title'][:25]}...",  # Укороченное название задачи
-            callback_data=f"view_task:{task['id']}"
-        )
-        for task in filtered_tasks
-    ]
-    back_button = [
-        InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")
-    ]
-
-    # Генерируем клавиатуру
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [button] for button in task_buttons # Каждая кнопка задачи в отдельной строке
-        ]+[back_button]
-    )
-
-    # Редактируем сообщение с новой клавиатурой
-    await callback_query.message.edit_text(f"📋 Задачи со статусом '{status}':", reply_markup=keyboard)
-
+@router.callback_query(F.data.startswith("filter:"))
+async def filter_tasks(callback_query: CallbackQuery, db: Database):
+    status = callback_query.data.split(":")[1]
+    tasks = db.get_all_tasks()
+    filtered_tasks = [task for task in tasks if task['status'] == status]
+    if not filtered_tasks:
+        await callback_query.message.edit_text("Нет задач с выбранным статусом.")
+        return
+    keyboard = create_task_list_keyboard(filtered_tasks)
+    back_button = [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")]
+    keyboard.inline_keyboard.append(back_button)
+    await callback_query.message.edit_text(f" Задачи со статусом '{status}':", reply_markup=keyboard)
         
 
 @router.callback_query(F.data.startswith("reassign_task:"))
@@ -556,7 +534,6 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
 
 @router.callback_query(F.data.startswith("checktask:"))
 async def checktask_executor(callback_query, state: FSMContext, db: Database):
-    # executor_id = callback_query.data.split("_")[1].split(":")[0]
     task_id = callback_query.data.split(":")[1]
     task = db.get_task_by_id(task_id)
     if task['report_photo']:
@@ -575,14 +552,10 @@ async def checktask_executor(callback_query, state: FSMContext, db: Database):
 
 @router.callback_query(F.data.startswith("approved:"))
 async def complete_task_executor(callback_query: CallbackQuery, db: Database):
-    # executor_id = callback_query.data.split("_")[1].split(":")[0]
     task_id = callback_query.data.split(":")[1]
-    # task = db.get_task_by_id(task_id)
     db.update_task_status(task_id, 'completed')
     await callback_query.message.answer("Задача подтверждена")
-    # await state.clear()
     
-
 
 @router.callback_query(F.data.startswith("add_comment:"))
 async def add_comment_handler(callback_query: CallbackQuery):
@@ -590,31 +563,28 @@ async def add_comment_handler(callback_query: CallbackQuery):
     task_id = callback_query.data.split(":")[1]
     oldDesc = db.get_task_by_id(task_id)['description']
     await callback_query.message.answer("В разработке.")
-    # updateDesc = f'{oldDesc}\n\n{newDesc}'
 
 
 @router.callback_query(F.data.startswith("delete_task:"))
-async def delete_task_handler(callback_query: CallbackQuery):
-    task_id = callback_query.data.split(":")[1]
-    db = Database()
+async def delete_task_handler(callback_query: CallbackQuery, db: Database):
+    task_id = int(callback_query.data.split(":")[1])
     try:
         db.delete_task(task_id=task_id)
         await callback_query.message.answer("Задача удалена!", show_alert=True)
     except Exception as e:
         await callback_query.message.answer(f"Ошибка при удалении: {e}", show_alert=True)
-    await callback_query.message.delete()  # Удаляем сообщение с выбором
+    await callback_query.message.delete()
 
 
 @router.callback_query(F.data == "view_users")
 async def view_users_handler(callback_query: CallbackQuery, db: Database):
-    """Обработчик для просмотра списка пользователей."""
     users = db.get_all_users()
     if users:
         await callback_query.message.edit_text("Список пользователей:", reply_markup=user_list_keyboard(users))
     else:
         await callback_query.message.edit_text("Пользователи не найдены.")
 
-@router.callback_query(F.data.startswith("user_info:")) # Обработчик для информации о пользователе
+@router.callback_query(F.data.startswith("user_info:"))
 async def user_info_handler(callback_query: CallbackQuery, db: Database):
     user_id = int(callback_query.data.split(":")[1])
     user = db.get_user_by_id(user_id)
@@ -658,3 +628,20 @@ async def back_to_users_handler(callback_query: CallbackQuery, db: Database):
 @router.message(F.text == "Список пользователей")
 async def view_users_menu_handler(message: Message):
     await message.answer("Управление пользователями", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Посмотреть список пользователей", callback_data="view_users")]]))
+
+@router.callback_query(F.data.startswith("delete_user:"))
+async def delete_user_handler(callback_query: CallbackQuery, db: Database):
+    """Обработчик для удаления пользователя."""
+    user_id = int(callback_query.data.split(":")[1])
+
+    # Проверяем, не пытается ли админ удалить самого себя
+    if user_id == callback_query.from_user.id:
+        await callback_query.answer("Вы не можете удалить самого себя.", show_alert=True)
+        return
+
+    user = db.get_user_by_id(user_id) #получаем пользователя перед удалением для вывода сообщения
+    if user:
+        db.delete_user(user_id)
+        await callback_query.message.edit_text(f"Пользователь {user['username']} (ID: {user_id}) успешно удален.")
+    else:
+        await callback_query.message.edit_text("Пользователь не найден.")

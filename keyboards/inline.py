@@ -83,21 +83,6 @@ def task_admin_keyboard(task_id: int, status):
     # Создаем клавиатуру с этими кнопками
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-
-# def task_admin_keyboarda(task_id: int, status):
-#     """
-#     Создает клавиатуру для исполнителя задачи.
-#     """
-#     # Создаем список кнопок с callback_data
-#     buttons = [
-#         [InlineKeyboardButton(text="Проверить", callback_data=f"checktask:{task_id}")],
-#         [InlineKeyboardButton(text="Добавить комментарий", callback_data=f"add_comment:{task_id}")],
-#         [InlineKeyboardButton(text="Назад к списку", callback_data=f"back_to_filter_list:{status}")]
-#         # [InlineKeyboardButton(text="Удалить задачу", callback_data=f"delete_task:{task_id}")]
-#     ]
-#     # Создаем клавиатуру с этими кнопками
-#     return InlineKeyboardMarkup(inline_keyboard=buttons)
-
 def task_admin_keyboardb(task_id: int):
     """
     Создает клавиатуру для исполнителя задачи.
@@ -111,13 +96,6 @@ def task_admin_keyboardb(task_id: int):
     # Создаем клавиатуру с этими кнопками
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# def back_button():
-#     # Создаем список кнопок с callback_data
-#     buttons = [
-#         [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")]
-#     ]
-#     # Создаем клавиатуру с этими кнопками
-#     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def reassign_executor_keyboard(executors, task_id, allow_finish=False):
     """
@@ -148,6 +126,7 @@ def role_selection_keyboard(user_id):
     buttons = [
         [InlineKeyboardButton(text="Админ", callback_data=f"set_role:Админ:{user_id}")],
         [InlineKeyboardButton(text="Исполнитель", callback_data=f"set_role:Исполнитель:{user_id}")],
+        [InlineKeyboardButton(text="Удалить пользователя", callback_data=f"delete_user:{user_id}")], # Новая кнопка
         [InlineKeyboardButton(text="Назад к списку пользователей", callback_data=f"back_to_users")] # Кнопка "Назад"
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

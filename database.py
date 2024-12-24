@@ -57,6 +57,11 @@ class Database:
         """, (role, user_id))
         self.connection.commit()
 
+    def delete_user(self, user_id):
+        """Удаляет пользователя из базы данных."""
+        self.cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        self.connection.commit()
+
     def get_user(self, user_id):
         """Получение информации о пользователе по ID."""
         query = "SELECT * FROM users WHERE user_id = ?"
