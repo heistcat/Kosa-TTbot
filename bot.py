@@ -5,6 +5,8 @@ from database import Database
 from handlers import common, admin, executor
 
 API_TOKEN = "7974083015:AAGv7PustiY-eJfDtT2q9ZSE6r2t9SLTS80"
+# API_TOKEN = "7300885902:AAHp99Wki_VnVmKco65G4uj7DUyXm2h880A"
+
 DB_PATH = "database.db"  # Путь к базе данных
 bot = Bot(token=API_TOKEN)
 
