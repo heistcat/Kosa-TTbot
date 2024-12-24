@@ -121,56 +121,6 @@ async def my_tasks_handler(message: Message, db: Database):
     # Отправляем список задач
     await message.answer("📋 Ваши задачи:", reply_markup=keyboard)
 
-
-# @router.callback_query(F.data.startswith("view_my_task:"))
-# async def view_my_task(callback_query: CallbackQuery, db: Database):
-#     """
-#     Отображение деталей задачи для исполнителя.
-#     """
-#     task_id = int(callback_query.data.split(":")[1])  # Получаем ID задачи
-#     task = db.get_task_by_id(task_id)
-
-#     if not task:
-#         await callback_query.message.edit_text("Задача не найдена.")
-#         return
-    
-
-#     # Формируем текст задачи
-#     task_text = (
-#         f"📋 <b>Детали задачи:</b>\n\n"
-#         f"🔹 <b>Название:</b> {task['title']}\n"
-#         f"🔹 <b>Описание:</b> {task['description']}\n"
-#         f"🔹 <b>Дедлайн:</b> {task['deadline']}\n"
-#         f"🔹 <b>Статус:</b> {task['status']}\n\n"
-#     )
-#     if task['comments'] and task['comments'] != '_':
-#         formatted_comments = ""
-#         for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
-#             formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
-
-#         task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
-
-
-#     # Удаляем старое сообщение (список задач) и отправляем новое с задачей
-#     await callback_query.message.delete()
-
-#     # Отправляем сообщение с задачей и фото (если есть)
-#     if task["ref_photo"]:
-#         await callback_query.message.answer_photo(
-#             photo=task["ref_photo"],  # Идентификатор файла фотографии
-#             caption=task_text,
-#             reply_markup=task_executor_keyboard(task_id) if task['status'] == 'pending' else task_executor_keyboarda(task_id),
-#             parse_mode="HTML"
-#         )
-#     else:
-#         await callback_query.message.answer(
-#             task_text,
-#             reply_markup=task_executor_keyboard(task_id) if task['status'] == 'pending' else task_executor_keyboarda(task_id),
-#             parse_mode="HTML"
-#         )
-
-# executor.py
-
 async def show_task_details(callback_query: CallbackQuery, db: Database, task_id: int):
     """Общая функция для отображения деталей задачи."""
     task = db.get_task_by_id(task_id)
@@ -276,16 +226,7 @@ async def take_task_handler(callback_query: CallbackQuery):
         await callback_query.message.edit_reply_markup(reply_markup=task_executor_keyboarda(task_id))
         await callback_query.message.answer("Вы взялись за задачу!")
 
-@router.callback_query(F.data == "add_comment")
-async def add_comment_handler(callback_query: CallbackQuery):
-    db = Database()
-    # task_id = callback_query.data.split(":")[1]
-    # oldDesc = db.get_task_by_id(task_id)['description']
-    await callback_query.message.answer("В разработке.")
-    # updateDesc = f'{oldDesc}\n\n{newDesc}'
-    # await callback_query.message.answer("Добавьте комментарий.")
 
-# @router.callback_query(F.data.startswith("complete_task:"), StateFilter(ReportTaskFSM.task_id))
 @router.callback_query(F.data.startswith("complete_task:"))
 async def complete_task_handler(callback_query: CallbackQuery, state: FSMContext):
     task_id = callback_query.data.split(":")[1]
@@ -347,48 +288,28 @@ async def done_tasks(message: Message, db: Database):
 
     # Отправляем список задач
     await message.answer("📋 Ваши завершенные задачи:", reply_markup=keyboard)
+
+@router.message(F.text == "Моя статистика")
+async def executor_statistics(message: types.Message, db: Database):
+    """Отображение статистики для исполнителя."""
+    user_id = message.from_user.id
+
+    total_user_tasks = db.get_user_tasks_count(user_id)
+    pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "pending")
+    is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
+    done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
+    completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
+
+    response = (
+        " <b>Ваша статистика:</b>\n\n"
+        f"<b>Задачи:</b>\n"
+        f"Всего: {total_user_tasks}\n"
+        f"Ожидают выполнения: {pending_user_tasks}\n"
+        f"В работе: {is_on_work_user_tasks}\n"
+        f"Выполнены: {done_user_tasks}\n"
+        f"Завершены: {completed_user_tasks}\n"
+    )
+
+    await message.answer(response, parse_mode="HTML")
+    await message.delete()
     
-# @router.callback_query(F.data.startswith("view_my_done_task:"))
-# async def view_my_done_task(callback_query: CallbackQuery, db: Database):
-#     """
-#     Отображение деталей задачи для исполнителя.
-#     """
-#     task_id = int(callback_query.data.split(":")[1])  # Получаем ID задачи
-#     task = db.get_task_by_id(task_id)
-
-#     if not task:
-#         await callback_query.message.edit_text("Задача не найдена.")
-#         return
-
-#     # Формируем текст задачи
-#     task_text = (
-#         f"📋 <b>Детали задачи:</b>\n\n"
-#         f"🔹 <b>Название:</b> {task['title']}\n"
-#         f"🔹 <b>Описание:</b> {task['description']}\n"
-#         f"🔹 <b>Дедлайн:</b> {task['deadline']}\n"
-#         f"🔹 <b>Статус:</b> {task['status']}\n\n"
-#     )
-#     if task['comments'] and task['comments'] != '_':
-#         formatted_comments = ""
-#         for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
-#             formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
-
-#         task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
-
-#     # Удаляем старое сообщение (список задач) и отправляем новое с задачей
-#     await callback_query.message.delete()
-
-#     # Отправляем сообщение с задачей и фото (если есть)
-#     if task["ref_photo"]:
-#         await callback_query.message.answer_photo(
-#             photo=task["ref_photo"],  # Идентификатор файла фотографии
-#             caption=task_text,
-#             # reply_markup=None,
-#             parse_mode="HTML"
-#         )
-#     else:
-#         await callback_query.message.answer(
-#             task_text,
-#             # reply_markup=None,
-#             parse_mode="HTML"
-#         )

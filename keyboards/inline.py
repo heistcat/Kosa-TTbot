@@ -28,7 +28,6 @@ def task_executor_keyboard(task_id):
         [InlineKeyboardButton(text="Взяться за задачу", callback_data=f"take_task:{task_id}")],
         [InlineKeyboardButton(text="Добавить комментарий", callback_data=f"add_comment_exec:{task_id}")],
         [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_my_tasks")]
-        # [InlineKeyboardButton(text="Завершить задачу", callback_data="complete_task")]
     ]
     # Создаем клавиатуру с этими кнопками
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -74,8 +73,8 @@ def task_admin_keyboard(task_id: int, status):
         ]
     else:
         buttons = [
-            [InlineKeyboardButton(text="Переназначить", callback_data=f"reassign_task:{task_id}")],
             [InlineKeyboardButton(text="Взяться за задачу", callback_data=f"take_task:{task_id}")],
+            [InlineKeyboardButton(text="Переназначить", callback_data=f"reassign_task:{task_id}")],
             [InlineKeyboardButton(text="Добавить комментарий", callback_data=f"add_comment:{task_id}")],
             [InlineKeyboardButton(text="Удалить задачу", callback_data=f"delete_task:{task_id}")],
             [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")]
@@ -124,9 +123,18 @@ def user_list_keyboard(users):
 def role_selection_keyboard(user_id):
     """Создает клавиатуру для выбора роли."""
     buttons = [
-        [InlineKeyboardButton(text="Админ", callback_data=f"set_role:Админ:{user_id}")],
-        [InlineKeyboardButton(text="Исполнитель", callback_data=f"set_role:Исполнитель:{user_id}")],
+        [
+            InlineKeyboardButton(text="Админ", callback_data=f"set_role:Админ:{user_id}"),
+            InlineKeyboardButton(text="Исполнитель", callback_data=f"set_role:Исполнитель:{user_id}")
+        ],
+        [InlineKeyboardButton(text="Статистика пользователя", callback_data=f"user_stats:{user_id}")],
         [InlineKeyboardButton(text="Удалить пользователя", callback_data=f"delete_user:{user_id}")], # Новая кнопка
         [InlineKeyboardButton(text="Назад к списку пользователей", callback_data=f"back_to_users")] # Кнопка "Назад"
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def empty_keyboard():
+    """Пустая клавиатура."""
+    # buttons = [[InlineKeyboardButton(text="Статистика пользователей", callback_data="view_users_for_stats")]]
+
+    return InlineKeyboardMarkup(inline_keyboard=[])

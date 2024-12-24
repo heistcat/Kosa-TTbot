@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from keyboards.reply import admin_menu_keyboard, skip_photo, executor_menu_keyboard
-from keyboards.inline import assign_executor_keyboard, role_selection_keyboard, task_admin_keyboard, task_admin_keyboardb, reassign_executor_keyboard, user_list_keyboard
+from keyboards.inline import assign_executor_keyboard, empty_keyboard, role_selection_keyboard, task_admin_keyboard, task_admin_keyboardb, reassign_executor_keyboard, user_list_keyboard
 from database import Database
 from aiogram.types import CallbackQuery, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from handlers.common import send_menu
@@ -20,6 +20,7 @@ class CreateTaskFSM(StatesGroup):
     deadline = State()
     photo = State()
     assign = State()
+    location = State()  # Добавляем состояние для выбора локации
     selected_executors = State()  # Для хранения выбранных исполнителей
 
 #Создаем FSM
@@ -156,7 +157,7 @@ async def notify_executors(bot: Bot, executors: list[int], task_title: str, task
         except Exception as e:
             # Обработка ошибок отправки (например, если пользователь заблокировал бота)
             print(f"Не удалось отправить уведомление пользователю {executor_id}: {e}")
-
+    
 
 
 # Начало создания задачи
@@ -174,6 +175,28 @@ async def handle_task_title(message: Message, state: FSMContext):
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.description)
 
+@router.message(F.text.startswith("/ban"))
+async def ban_command(message: Message, bot: Bot, db: Database):
+    if not db.is_super_user(message.from_user.id):
+        await message.reply("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        user_id_to_ban = int(message.text.split()[1]) # Получаем ID пользователя из сообщения
+    except (ValueError, IndexError):
+        await message.reply("Неверный формат команды. Используйте: /ban <user_id>")
+        return
+
+    if db.ban_user(user_id_to_ban):
+        try:
+            await bot.send_message(user_id_to_ban, "Вы были забанены администратором.")
+        except:
+            pass # Если пользователь заблокировал бота, сообщение не отправится, это нормально
+        await message.reply(f"Пользователь с ID {user_id_to_ban} успешно забанен.")
+    else:
+        await message.reply("Произошла ошибка при бане пользователя.")
+
+
 # Ввод описания задачи
 @router.message(F.text, StateFilter(CreateTaskFSM.description))
 async def handle_task_description(message: Message, state: FSMContext):
@@ -181,6 +204,32 @@ async def handle_task_description(message: Message, state: FSMContext):
     await message.answer("Введите дедлайн задачи (в формате ДД-ММ):")
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.deadline)
+
+@router.message(F.text.startswith("/unban"))
+async def unban_command(message: Message, bot: Bot, db: Database):
+    if not db.is_super_user(message.from_user.id):
+        await message.reply("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        user_id_to_unban = int(message.text.split()[1]) # Получаем ID пользователя из сообщения
+    except (ValueError, IndexError):
+        await message.reply("Неверный формат команды. Используйте: /unban <user_id>")
+        return
+
+    if db.unban_user(user_id_to_unban):
+        await message.reply(f"Пользователь с ID {user_id_to_unban} успешно разбанен.")
+    else:
+        await message.reply("Произошла ошибка при разбане пользователя.")
+
+
+@router.message() # Фильтр для всех сообщений
+async def check_ban_status(message: Message, db: Database):
+    if db.is_user_banned(message.from_user.id):
+        await message.reply("Вы забанены и не можете использовать этого бота.")
+        return # Прекращаем обработку сообщения
+
+    
 
 # Ввод дедлайна задачи
 @router.message(F.text, StateFilter(CreateTaskFSM.deadline))
@@ -190,52 +239,48 @@ async def handle_task_deadline(message: Message, state: FSMContext):
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.photo)
 
-# Загрузка фото-референса
+# Загрузка фото-референса (изменено)
 @router.message(F.photo, StateFilter(CreateTaskFSM.photo))
 async def handle_task_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
     await state.update_data(photo=photo_id)
+    await show_location_selection(message, state) # Вызываем функцию выбора локации
 
-    db = Database()
-    executors = db.get_all_users()
-    if not executors:
-        await message.answer("Нет доступных исполнителей.")
-        await state.clear()
-        return
-    
-    # await state.update_data(selected_executors=[])
-    await message.answer(
-        "Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
-        # reply_markup=assign_executor_keyboard(executors, multiple=True)
-        reply_markup=assign_executor_keyboard(executors, multiple=True)
-    )
-    await message.delete()  # Удаляем сообщение с выбором
-    await message.answer("⬆️⬆️⬆️", reply_markup=ReplyKeyboardRemove())
-    # await message.delete()  # Удаляем сообщение с выбором
-    await state.set_state(CreateTaskFSM.selected_executors)
-
-
-# Обновление обработчика пропуска фото
+# Обновление обработчика пропуска фото (изменено)
 @router.message(F.text == "Пропустить", StateFilter(CreateTaskFSM.photo))
 async def skip_task_photo(message: Message, state: FSMContext):
-    # Если администратор нажал "Пропустить", продолжаем без фото
-    await state.update_data(photo=None)  # Фото отсутствует
+    await state.update_data(photo=None)
+    await show_location_selection(message, state) # Вызываем функцию выбора локации
+
+# Функция для отображения выбора локации (вынесено в отдельную функцию для переиспользования)
+async def show_location_selection(message: Message, state: FSMContext):
+    locations = ["Отель", "Ресторан", "Зоопарк", "Стафф зона", "Благоустройство kosa", "Оранжерея", "Винодельня", "Бассейн N1", "Бассейн N2", "4 жилых", "Благоустройство villoyat", "Вся ферма"]
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+        [
+            InlineKeyboardButton(text=locations[i], callback_data=f"location:{locations[i]}"),
+            InlineKeyboardButton(text=locations[i+1], callback_data=f"location:{locations[i+1]}") if i + 1 < len(locations) else None # Проверка на выход за границы списка
+        ]for i in range(0, len(locations), 2)])
+    # await message.edit_reply_markup(reply_markup=ReplyKeyboardRemove())
+    await message.answer("Выберите местоположение задачи:", reply_markup=keyboard)
+    await state.set_state(CreateTaskFSM.location)
+
+# Обработка выбора локации
+@router.callback_query(F.data.startswith("location:"), StateFilter(CreateTaskFSM.location))
+async def handle_task_location(callback_query: CallbackQuery, state: FSMContext):
+    location = callback_query.data.split(":")[1]
+    await state.update_data(location=location)
 
     db = Database()
     executors = db.get_all_users()
     if not executors:
-        await message.answer("Нет доступных исполнителей.")
+        await callback_query.message.answer("Нет доступных исполнителей.")
         await state.clear()
         return
 
-    # Переход к этапу выбора исполнителей
-    await message.answer(
-        "Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
+    await callback_query.message.edit_text("Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
         reply_markup=assign_executor_keyboard(executors, multiple=True)
     )
-    await message.delete()  # Удаляем сообщение с выбором
-    await message.answer("⬆️⬆️⬆️", reply_markup=ReplyKeyboardRemove())
-    # await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.selected_executors)
 
 
@@ -256,6 +301,8 @@ async def select_executor(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(selected_executors=selected_executors)
 
 
+
+
 @router.callback_query(F.data == "finish_selection", StateFilter(CreateTaskFSM.selected_executors))
 async def finish_executor_selection(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
     data = await state.get_data()
@@ -272,7 +319,8 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
         ref_photo=data["photo"] or None,
         assigned_to=",".join(map(str, executors)),  # Храним как строку с ID через запятую
         report_text="#",
-        report_photo="#"
+        report_photo="#",
+        location=data.get("location") # Добавляем location
     )
 
     await notify_executors(bot, executors, data["title"], data['deadline'])
@@ -280,17 +328,6 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
     await callback_query.message.answer("Задача успешно создана!", reply_markup=admin_menu_keyboard)
     await callback_query.message.delete()  # Удаляем сообщение с выбором
     await state.clear()
-
-# Просмотр статистики
-@router.message(F.text == "Статистика")
-async def admin_statistics(message: Message, db: Database):
-    stats = db.get_all_tasks().count # Предполагаемая функция получения статистики
-
-    response = (
-        f'в зарзарботке'
-    )
-    await message.answer(response)
-    await message.delete()  # Удаляем сообщение с выбором
 
 
 
@@ -305,30 +342,7 @@ async def view_tasks(message: Message, db: Database):
         await message.answer("Нет задач.")
         return
     
-    
-
-    # Создаем инлайн-клавиатуру с задачами
-    task_buttons = [
-        InlineKeyboardButton(
-            text=f"{task['title'][:25]}...",  # Укороченное название задачи
-            callback_data=f"view_task:{task['id']}"
-        )
-        for task in tasks if not task['status'] == 'completed' and not task['status'] == 'done'
-    ]
-
-    # Добавляем кнопки фильтрации
-    filter_buttons = [
-        InlineKeyboardButton(text="✅ Выполненные задачи", callback_data="filter:done"),
-        InlineKeyboardButton(text="🛑 Завершенные задачи", callback_data="filter:completed")
-    ]
-
-    # Генерируем клавиатуру
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [button] for button in task_buttons  # Каждая задача на отдельной строке
-        ] + [filter_buttons]  # Кнопки фильтра добавляем отдельной строкой
-    )
-
+    keyboard = create_task_list_keyboard(tasks)
     # Отправляем сообщение с задачами
     await message.answer("📋 Все задачи:", reply_markup=keyboard)
 
@@ -405,15 +419,30 @@ async def view_task(callback_query: CallbackQuery, db: Database):
         )
     
 
-def create_task_list_keyboard(tasks):
+def create_task_list_keyboard(tasks):    
+    # Создаем инлайн-клавиатуру с задачами
     task_buttons = [
         InlineKeyboardButton(
-            text=f"{task['title'][:25]}...",
+            text=f"{task['title'][:25]}...",  # Укороченное название задачи
             callback_data=f"view_task:{task['id']}"
         )
-        for task in tasks
+        for task in tasks if not task['status'] == 'completed' and not task['status'] == 'done'
     ]
-    return InlineKeyboardMarkup(inline_keyboard=[[button] for button in task_buttons])
+
+    # Добавляем кнопки фильтрации
+    filter_buttons = [
+        InlineKeyboardButton(text="✅ Выполненные задачи", callback_data="filter:done"),
+        InlineKeyboardButton(text="🛑 Завершенные задачи", callback_data="filter:completed")
+    ]
+
+    # Генерируем клавиатуру
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [button] for button in task_buttons  # Каждая задача на отдельной строке
+        ] + [filter_buttons]  # Кнопки фильтра добавляем отдельной строкой
+    )
+
+    return keyboard
 
 
 
@@ -424,7 +453,8 @@ async def back_to_task_list(callback_query: CallbackQuery, db: Database):
         await callback_query.message.edit_text("Нет задач.")
         return
     keyboard = create_task_list_keyboard(tasks)
-    await callback_query.message.edit_text(" Все задачи:", reply_markup=keyboard)
+    await callback_query.message.delete()
+    await callback_query.message.answer(" Все задачи:", reply_markup=keyboard)
 
 
 
@@ -576,13 +606,13 @@ async def delete_task_handler(callback_query: CallbackQuery, db: Database):
     await callback_query.message.delete()
 
 
-@router.callback_query(F.data == "view_users")
-async def view_users_handler(callback_query: CallbackQuery, db: Database):
+@router.message(F.text == "Управление пользователями")
+async def view_users_handler(message: Message, db: Database):
     users = db.get_all_users()
     if users:
-        await callback_query.message.edit_text("Список пользователей:", reply_markup=user_list_keyboard(users))
+        await message.answer("Список пользователей:", reply_markup=user_list_keyboard(users))
     else:
-        await callback_query.message.edit_text("Пользователи не найдены.")
+        await message.answer("Пользователи не найдены.")
 
 @router.callback_query(F.data.startswith("user_info:"))
 async def user_info_handler(callback_query: CallbackQuery, db: Database):
@@ -625,10 +655,6 @@ async def back_to_users_handler(callback_query: CallbackQuery, db: Database):
     else:
         await callback_query.message.edit_text("Пользователи не найдены.")
 
-@router.message(F.text == "Список пользователей")
-async def view_users_menu_handler(message: Message):
-    await message.answer("Управление пользователями", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Посмотреть список пользователей", callback_data="view_users")]]))
-
 @router.callback_query(F.data.startswith("delete_user:"))
 async def delete_user_handler(callback_query: CallbackQuery, db: Database):
     """Обработчик для удаления пользователя."""
@@ -643,5 +669,121 @@ async def delete_user_handler(callback_query: CallbackQuery, db: Database):
     if user:
         db.delete_user(user_id)
         await callback_query.message.edit_text(f"Пользователь {user['username']} (ID: {user_id}) успешно удален.")
+    else:
+        await callback_query.message.edit_text("Пользователь не найден.")
+
+
+@router.message(F.text == "Статистика")
+async def admin_statistics(message: types.Message, db: Database):
+    """Отображение статистики (общей и по пользователям)."""
+    total_tasks = db.get_total_tasks_count()
+    pending_tasks = db.get_tasks_count_by_status("pending")
+    is_on_work_tasks = db.get_tasks_count_by_status("is_on_work")
+    done_tasks = db.get_tasks_count_by_status("done")
+    completed_tasks = db.get_tasks_count_by_status("completed")
+    total_users = db.get_all_users_count()
+    admin_users = db.get_users_count_by_role("Админ")
+    executor_users = db.get_users_count_by_role("Исполнитель")
+
+    response = (
+        " <b>Общая статистика:</b>\n\n"
+        f"<b>Задачи:</b>\n"
+        f"Всего: {total_tasks}\n"
+        f"Ожидают выполнения: {pending_tasks}\n"
+        f"В работе: {is_on_work_tasks}\n"
+        f"Выполнены: {done_tasks}\n"
+        f"Завершены: {completed_tasks}\n\n"
+        f"<b>Пользователи:</b>\n"
+        f"Всего: {total_users}\n"
+        f"Администраторы: {admin_users}\n"
+        f"Исполнители: {executor_users}\n"
+        f"<b>Статистика по пользователям:</b>" # Заголовок для выбора пользователя
+    )
+    users = db.get_all_users()
+    if users:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{user['username']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
+        ])
+        await message.answer(response, parse_mode="HTML", reply_markup=keyboard)
+    else:
+        await message.answer(response + "\nПользователи не найдены.", parse_mode="HTML")
+    await message.delete()
+
+@router.callback_query(F.data.startswith("user_stats:"))
+async def user_statistics(callback_query: CallbackQuery, db: Database):
+    """Отображение статистики по конкретному пользователю."""
+    user_id = callback_query.data.split(":")[1]
+    user = db.get_user_by_id(user_id)
+    if not user:
+        await callback_query.message.edit_text("Пользователь не найден.")
+        return
+    
+    total_user_tasks = db.get_user_tasks_count(user_id)
+    pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "pending")
+    is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
+    done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
+    completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
+
+    response = (
+        f" <b>Статистика пользователя {user['username']} ({user['name']}):</b>\n\n"
+        f"<b>Задачи:</b>\n"
+        f"Всего: {total_user_tasks}\n"
+        f"Ожидают выполнения: {pending_user_tasks}\n"
+        f"В работе: {is_on_work_user_tasks}\n"
+        f"Выполнены: {done_user_tasks}\n"
+        f"Завершены: {completed_user_tasks}\n"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Назад", callback_data="back_to_stats")] # Кнопка "Назад"
+    ])
+
+    await callback_query.message.edit_text(response, parse_mode="HTML", reply_markup=keyboard) # Используем edit_text
+    await callback_query.answer()
+
+@router.callback_query(F.data == "back_to_stats")
+async def back_to_stats(callback_query: types.CallbackQuery, db: Database):
+    """Возвращает к общему разделу статистики."""
+    total_tasks = db.get_total_tasks_count()
+    pending_tasks = db.get_tasks_count_by_status("pending")
+    is_on_work_tasks = db.get_tasks_count_by_status("is_on_work")
+    done_tasks = db.get_tasks_count_by_status("done")
+    completed_tasks = db.get_tasks_count_by_status("completed")
+    total_users = db.get_all_users_count()
+    admin_users = db.get_users_count_by_role("Админ")
+    executor_users = db.get_users_count_by_role("Исполнитель")
+
+    response = (
+        " <b>Общая статистика:</b>\n\n"
+        f"<b>Задачи:</b>\n"
+        f"Всего: {total_tasks}\n"
+        f"Ожидают выполнения: {pending_tasks}\n"
+        f"В работе: {is_on_work_tasks}\n"
+        f"Выполнены: {done_tasks}\n"
+        f"Завершены: {completed_tasks}\n\n"
+        f"<b>Пользователи:</b>\n"
+        f"Всего: {total_users}\n"
+        f"Администраторы: {admin_users}\n"
+        f"Исполнители: {executor_users}\n"
+        f"<b>Статистика по пользователям:</b>"
+    )
+    users = db.get_all_users()
+    if users:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{user['username']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
+        ])
+        await callback_query.message.edit_text(response, parse_mode="HTML", reply_markup=keyboard) # Используем edit_text
+    else:
+        await callback_query.message.edit_text(response + "\nПользователи не найдены.", parse_mode="HTML") # Используем edit_text
+    await callback_query.answer()
+
+#Добавим кнопку для просмотра статистики пользователя в user_info_handler
+@router.callback_query(F.data.startswith("user_info:")) # Обработчик для информации о пользователе
+async def user_info_handler(callback_query: CallbackQuery, db: Database):
+    user_id = callback_query.data.split(":")[1]
+    user = db.get_user_by_id(user_id)
+    if user:
+        keyboard = role_selection_keyboard(user_id)
+        keyboard.inline_keyboard.append([InlineKeyboardButton(text="Статистика пользователя", callback_data=f"user_stats:{user_id}")])
+        await callback_query.message.edit_text(f"Информация о пользователе:\n{user['username']} : {user['role']}", reply_markup=keyboard)
     else:
         await callback_query.message.edit_text("Пользователь не найден.")

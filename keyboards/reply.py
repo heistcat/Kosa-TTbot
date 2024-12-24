@@ -5,9 +5,12 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 admin_menu_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Создать задачу")],
-        [KeyboardButton(text="Просмотр задач")],
-        [KeyboardButton(text="Список пользователей")],  # Новая кнопка
-        [KeyboardButton(text="Статистика")]
+        [
+            KeyboardButton(text="Просмотр задач"),
+            KeyboardButton(text="Статистика")
+        ],
+        [KeyboardButton(text="Управление пользователями")],  # Новая кнопка
+        # [KeyboardButton(text="Статистика пользователей")]
     ],
     resize_keyboard=True
 )
@@ -29,3 +32,15 @@ executor_menu_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+
+superuser_menu_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Создать задачу")],
+        [
+            KeyboardButton(text="Просмотр задач"),
+            KeyboardButton(text="Статистика")
+        ],
+        [KeyboardButton(text="Управление пользователями")] # Новая кнопка
+    ],
+    resize_keyboard=True
+)

@@ -18,7 +18,7 @@ class Database:
             name TEXT,
             phone_number TEXT,
             birth_date TEXT DEFAULT 'not set',
-            role TEXT DEFAULT 'executor'
+            role TEXT DEFAULT 'Исполнитель'
         )
         """)
         self.cursor.execute("""
@@ -29,6 +29,7 @@ class Database:
             deadline TEXT,
             ref_photo TEXT,
             assigned_to TEXT,
+            location TEXT,
             status TEXT DEFAULT 'pending',
             report_text TEXT DEFAULT '_',
             report_photo TEXT DEFAULT '_',
@@ -36,6 +37,69 @@ class Database:
             FOREIGN KEY (assigned_to) REFERENCES users(user_id)
         )
         """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS su (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT UNIQUE
+        )
+        """)
+        self.connection.commit()
+
+
+    def add_ban_column(self):  # Добавление столбца is_banned, если его нет
+        try:
+            self.cursor.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
+            self.connection.commit()
+            print("Столбец is_banned успешно добавлен.")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name: is_banned" in str(e):
+                print("Столбец is_banned уже существует.")
+            else:
+                print(f"Ошибка при добавлении столбца: {e}")
+
+    def ban_user(self, user_id):
+        try:
+            self.cursor.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при бане пользователя: {e}")
+            return False
+
+    def unban_user(self, user_id):
+        try:
+            self.cursor.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при разбане пользователя: {e}")
+            return False
+
+    def is_user_banned(self, user_id):
+        try:
+            self.cursor.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
+            result = self.cursor.fetchone()
+            if result:
+                return bool(result[0])  # Преобразуем 0/1 в True/False
+            return False  # Пользователь не найден, считаем, что не забанен
+        except sqlite3.Error as e:
+            print(f"Ошибка при проверке бана: {e}")
+            return False
+        
+    def is_super_user(self, user_id):
+        try:
+            self.cursor.execute("SELECT COUNT(*) FROM su WHERE user_id = ?", (user_id,))
+            result = self.cursor.fetchone()[0]
+            return result > 0  # Возвращает True, если пользователь есть в таблице su, иначе False
+        except sqlite3.Error as e:
+            print(f"Ошибка при проверке суперпользователя: {e}")
+            return False
+
+
+    def register_su(self, user_id):
+        self.cursor.execute("""
+        INSERT INTO su (user_id) VALUES (?)
+        """, (user_id,))
         self.connection.commit()
 
 
@@ -74,16 +138,16 @@ class Database:
 
     def get_all_executors(self):
         """Получение всех исполнителей (executor)."""
-        query = "SELECT * FROM users WHERE role = 'executor'"
+        query = "SELECT * FROM users WHERE role = 'Исполнитель'"
         return self.connection.execute(query).fetchall()
 
     # --- Методы для работы с задачами ---
-    def create_task(self, title, description, ref_photo, deadline, assigned_to, report_text, report_photo):
+    def create_task(self, title, description, ref_photo, deadline, assigned_to, report_text, report_photo, location):
         """Создание задачи."""
         self.connection.execute("""
-        INSERT INTO tasks (title, description, ref_photo, deadline, assigned_to, report_text, report_photo)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (title, description, ref_photo, deadline, assigned_to, report_text, report_photo))
+        INSERT INTO tasks (title, description, ref_photo, deadline, assigned_to, report_text, report_photo, location)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, description, ref_photo, deadline, assigned_to, report_text, report_photo, location))
         self.connection.commit()
 
     def update_task_assigned_to(self, assigned_to, task_id):
@@ -217,3 +281,32 @@ class Database:
             """, (new_comments, task_id))
             self.connection.commit()
 
+    def get_total_tasks_count(self):
+        """Возвращает общее количество задач."""
+        self.cursor.execute("SELECT COUNT(*) FROM tasks")
+        return self.cursor.fetchone()[0]
+
+    def get_tasks_count_by_status(self, status):
+        """Возвращает количество задач с определенным статусом."""
+        self.cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = ?", (status,))
+        return self.cursor.fetchone()[0]
+
+    def get_user_tasks_count(self, user_id):
+        """Возвращает количество задач, назначенных на пользователя."""
+        self.cursor.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to LIKE ?", (f"%{user_id}%",))
+        return self.cursor.fetchone()[0]
+
+    def get_user_tasks_count_by_status(self, user_id, status):
+        """Возвращает количество задач пользователя с определенным статусом."""
+        self.cursor.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to LIKE ? AND status = ?", (f"%{user_id}%", status))
+        return self.cursor.fetchone()[0]
+
+    def get_all_users_count(self):
+        """Возвращает общее количество пользователей."""
+        self.cursor.execute("SELECT COUNT(*) FROM users")
+        return self.cursor.fetchone()[0]
+
+    def get_users_count_by_role(self, role):
+        """Возвращает количество пользователей с определенной ролью."""
+        self.cursor.execute("SELECT COUNT(*) FROM users WHERE role = ?", (role,))
+        return self.cursor.fetchone()[0]

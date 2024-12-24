@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from keyboards.reply import admin_menu_keyboard, executor_menu_keyboard
+from keyboards.reply import admin_menu_keyboard, executor_menu_keyboard, superuser_menu_keyboard
 
 from database import Database
 
@@ -65,15 +65,20 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
             await message.answer("Добро пожаловать обратно, "+user['name']+"!", reply_markup=executor_menu_keyboard)
         return
     
-    if phone_number == "998938869216" or phone_number == "998998666975":
+    if phone_number == "998938869216":
         db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Админ")
         await message.answer(f"Добро пожаловать в Admin-меню!", 
                          reply_markup=admin_menu_keyboard)
+    elif phone_number == "998998666975":
+        db.register_su(user_id=user_id)
+        await message.answer(f"ROOT: Welcome to the club, buddy!\n\n", 
+                         reply_markup=superuser_menu_keyboard)
     else:
         db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Исполнитель")
         await message.answer(f"Добро пожаловать в меню исполнителя!\n\n(если вы админ, то свяжитесь с текущим админом что бы вас назначили админом)\n\n", 
                          reply_markup=executor_menu_keyboard)
 
     await state.clear()
+
 
  
