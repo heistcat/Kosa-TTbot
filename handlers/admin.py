@@ -40,7 +40,7 @@ async def format_task_text(task: dict, db: Database) -> str:
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
         f"<b>Название:</b> {task['title']}\n"
-        f"<b>Описание:</b> {task['description']}\n"
+        f"<b>Стоимость задачи:</b> {task['description']}\n"
         f"<b>Дедлайн:</b> {task['deadline']}\n"
         f"<b>Исполнители:</b> {assigned_users_str}\n"
         f"<b>Статус:</b> {task['status']}\n\n"
@@ -99,7 +99,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
             task_text = (
                 f" <b>Детали задачи:</b>\n\n"
                 f" <b>Название:</b> {task['title']}\n"
-                f" <b>Описание:</b> {task['description']}\n"
+                f" <b>Стоимость задачи:</b> {task['description']}\n"
                 f" <b>Дедлайн:</b> {task['deadline']}\n"
                 f" <b>Исполнители:</b> {assigned_users}\n"
                 f" <b>Статус:</b> {task['status']}\n\n"
@@ -171,7 +171,7 @@ async def start_create_task(message: Message, state: FSMContext):
 @router.message(F.text, StateFilter(CreateTaskFSM.title))
 async def handle_task_title(message: Message, state: FSMContext):
     await state.update_data(title=message.text)
-    await message.answer("Введите описание задачи:")
+    await message.answer("Введите стоимость задачи:")
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.description)
 
@@ -343,7 +343,7 @@ async def view_task(callback_query: CallbackQuery, db: Database):
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
         f"<b>Название:</b> {task['title']}\n"
-        f"<b>Описание:</b> {task['description']}\n"
+        f"<b>Стоимость задачи:</b> {task['description']}\n"
         f"<b>Дедлайн:</b> {task['deadline']}\n"
         f"<b>Исполнители:</b> {assigned_users}\n"
         f"<b>Статус:</b> {task['status']}\n\n"
