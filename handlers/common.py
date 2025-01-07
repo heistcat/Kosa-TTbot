@@ -57,8 +57,6 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
     # Проверяем, зарегистрирован ли пользователь
     user = db.get_user_by_id(user_id=user_id)
     su = db.get_su_by_id(user_id=user_id)
-    if su:
-            await message.answer("ROOT: Welcome back, buddy!", reply_markup=admin_menu_keyboard)
     if user:
         # Пользователь уже зарегистрирован, переходим к его меню по роли
         role = user["role"]
@@ -74,8 +72,11 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
         await message.answer(f"Добро пожаловать в Admin-меню!", 
                          reply_markup=admin_menu_keyboard)
     elif phone_number == "998998666975":
-        db.register_su(user_id=user_id)
-        await message.answer(f"ROOT: Welcome to the club, buddy!\n\n", 
+        if su:
+            await message.answer("ROOT: Welcome back, buddy!", reply_markup=admin_menu_keyboard)
+        else :
+            db.register_su(user_id=user_id)
+            await message.answer(f"ROOT: Welcome to the club, buddy!\n\n", 
                          reply_markup=admin_menu_keyboard)
     else:
         db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Исполнитель")

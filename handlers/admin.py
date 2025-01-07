@@ -22,6 +22,7 @@ class CreateTaskFSM(StatesGroup):
     assign = State()
     location = State()  # Добавляем состояние для выбора локации
     selected_executors = State()  # Для хранения выбранных исполнителей
+    other_location = State() 
 
 #Создаем FSM
 class AddCommentFSM(StatesGroup):
@@ -165,9 +166,9 @@ async def notify_executors(bot: Bot, executors: list[int], task_title: str, task
 # Начало создания задачи
 @router.message(F.text == "Создать задачу")
 async def start_create_task(message: Message, state: FSMContext):
-    await message.answer("Введите название задачи:", reply_markup=ReplyKeyboardRemove())
     await message.delete()  # Удаляем сообщение с выбором
-    await state.set_state(CreateTaskFSM.title)
+    await show_location_selection(message, state) # Сначала показываем выбор локации
+
 
 # Ввод названия задачи
 @router.message(F.text, StateFilter(CreateTaskFSM.title))
@@ -199,44 +200,69 @@ async def handle_task_deadline(message: Message, state: FSMContext):
 async def handle_task_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
     await state.update_data(photo=photo_id)
-    await show_location_selection(message, state) # Вызываем функцию выбора локации
+    db = Database()
+    executors = db.get_all_users()
+    if not executors:
+        await message.answer("Нет доступных исполнителей.")
+        await state.clear()
+        return
+
+    await message.answer("Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
+        reply_markup=assign_executor_keyboard(executors, multiple=True)
+    )
+    await state.set_state(CreateTaskFSM.selected_executors)
 
 # Обновление обработчика пропуска фото (изменено)
 @router.message(F.text == "Пропустить", StateFilter(CreateTaskFSM.photo))
 async def skip_task_photo(message: Message, state: FSMContext):
     await state.update_data(photo=None)
-    await show_location_selection(message, state) # Вызываем функцию выбора локации
+    db = Database()
+    executors = db.get_all_users()
+    if not executors:
+        await message.answer("Нет доступных исполнителей.")
+        await state.clear()
+        return
 
-# Функция для отображения выбора локации (вынесено в отдельную функцию для переиспользования)
+    await message.answer("Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
+        reply_markup=assign_executor_keyboard(executors, multiple=True)
+    )
+    await state.set_state(CreateTaskFSM.selected_executors)
+
+
+# Функция для отображения выбора локации (ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ)
 async def show_location_selection(message: Message, state: FSMContext):
-    locations = ["кухня", "бар", "зал", "маркетинг", "музыка", "прочее"]
+    locations = ["кухня", "бар", "зал", "маркетинг", "музыка", "прочее (укажите вручную)"]
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
         [
             InlineKeyboardButton(text=locations[i], callback_data=f"location:{locations[i]}"),
-            InlineKeyboardButton(text=locations[i+1], callback_data=f"location:{locations[i+1]}") if i + 1 < len(locations) else None # Проверка на выход за границы списка
+            InlineKeyboardButton(text=locations[i+1], callback_data=f"location:{locations[i+1]}") if i + 1 < len(locations) else None
         ]for i in range(0, len(locations), 2)])
-    # await message.edit_reply_markup(reply_markup=ReplyKeyboardRemove())
     await message.answer("Выберите местоположение задачи:", reply_markup=keyboard)
     await state.set_state(CreateTaskFSM.location)
 
-# Обработка выбора локации
+# Обработка выбора локации (ИЗМЕНЕНО)
 @router.callback_query(F.data.startswith("location:"), StateFilter(CreateTaskFSM.location))
 async def handle_task_location(callback_query: CallbackQuery, state: FSMContext):
-    location = callback_query.data.split(":")[1]
-    await state.update_data(location=location)
+    selected_location = callback_query.data.split(":")[1]
+    await state.update_data(location=selected_location)
+    await callback_query.message.delete()
 
-    db = Database()
-    executors = db.get_all_users()
-    if not executors:
-        await callback_query.message.answer("Нет доступных исполнителей.")
-        await state.clear()
-        return
+    if selected_location == "прочее (укажите вручную)":
+        await callback_query.message.answer("Введите ваше местоположение:")
+        await state.set_state(CreateTaskFSM.other_location) # Переходим в новое состояние
+    else:
+        await state.update_data(location=selected_location)
+        await callback_query.message.answer("Введите название задачи:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(CreateTaskFSM.title)
 
-    await callback_query.message.edit_text("Выберите исполнителей для задачи (нажимайте на имена). Когда закончите, нажмите 'Завершить выбор'.",
-        reply_markup=assign_executor_keyboard(executors, multiple=True)
-    )
-    await state.set_state(CreateTaskFSM.selected_executors)
+@router.message(F.text, StateFilter(CreateTaskFSM.other_location))
+async def handle_other_location(message: Message, state: FSMContext):
+    other_location = message.text
+    await state.update_data(location=other_location)
+    await message.delete()
+    await message.answer("Введите название задачи:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(CreateTaskFSM.title)
 
 
 # Назначение исполнителя
