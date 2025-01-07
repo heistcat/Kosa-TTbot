@@ -60,6 +60,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 assigned_users = "Не назначено"
             task_text = (
                 f" <b>Детали задачи:</b>\n\n"
+                f"<b>Локация:</b> {task['location']}\n"
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
                 f" <b>Дедлайн:</b> {task['deadline']}\n"
@@ -131,6 +132,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
 
     task_text = (
         f" <b>Детали задачи:</b>\n\n"
+        f"<b>Локация:</b> {task['location']}\n"
         f" <b>Название:</b> {task['title']}\n"
         f" <b>Стоимость задачи:</b> {task['description']}\n"
         f" <b>Дедлайн:</b> {task['deadline']}\n"

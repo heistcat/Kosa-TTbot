@@ -39,6 +39,7 @@ async def format_task_text(task: dict, db: Database) -> str:
 
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
+        f"<b>Локация:</b> {task['location']}\n"
         f"<b>Название:</b> {task['title']}\n"
         f"<b>Стоимость задачи:</b> {task['description']}\n"
         f"<b>Дедлайн:</b> {task['deadline']}\n"
@@ -98,6 +99,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
             ])
             task_text = (
                 f" <b>Детали задачи:</b>\n\n"
+                f"<b>Локация:</b> {task['location']}\n"
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
                 f" <b>Дедлайн:</b> {task['deadline']}\n"
@@ -207,7 +209,7 @@ async def skip_task_photo(message: Message, state: FSMContext):
 
 # Функция для отображения выбора локации (вынесено в отдельную функцию для переиспользования)
 async def show_location_selection(message: Message, state: FSMContext):
-    locations = ["Отель", "Ресторан", "Зоопарк", "Стафф зона", "Благоустройство kosa", "Оранжерея", "Винодельня", "Бассейн N1", "Бассейн N2", "4 жилых", "Благоустройство villoyat", "Вся ферма"]
+    locations = ["кухня", "бар", "зал", "маркетинг", "музыка", "прочее"]
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
         [
@@ -342,6 +344,7 @@ async def view_task(callback_query: CallbackQuery, db: Database):
     # Формируем текст задачи с учетом комментариев
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
+        f"<b>Локация:</b> {task['location']}\n"
         f"<b>Название:</b> {task['title']}\n"
         f"<b>Стоимость задачи:</b> {task['description']}\n"
         f"<b>Дедлайн:</b> {task['deadline']}\n"
