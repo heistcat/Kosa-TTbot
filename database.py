@@ -36,7 +36,8 @@ class Database:
             status TEXT DEFAULT 'pending',
             report_text TEXT DEFAULT '_',
             report_photo TEXT DEFAULT '_',
-            comments TEXT DEFAULT '_',  -- Новое поле для комментариев
+            comments TEXT DEFAULT '_',
+            created_by INTEGER,
             FOREIGN KEY (assigned_to) REFERENCES users(user_id)
         )
         """)
@@ -98,13 +99,13 @@ class Database:
         return self.connection.execute(query).fetchall()
 
     # --- Методы для работы с задачами ---
-    def create_task(self, title, description, ref_photo, deadline, deadline_formatted, assigned_to, report_text, report_photo, location):
+    def create_task(self, title, description, ref_photo, deadline, deadline_formatted, assigned_to, report_text, report_photo, location, created_by):
         """Создание задачи."""
         timestamp = int(time.mktime(datetime.strptime(deadline, "%d-%m-%Y %H:%M").timetuple()))
         self.connection.execute("""
-        INSERT INTO tasks (title, description, ref_photo, deadline, deadline_formatted, assigned_to, report_text, report_photo, location)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (title, description, ref_photo, timestamp, deadline_formatted, assigned_to, report_text, report_photo, location))
+        INSERT INTO tasks (title, description, ref_photo, deadline, deadline_formatted, assigned_to, report_text, report_photo, location, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, description, ref_photo, timestamp, deadline_formatted, assigned_to, report_text, report_photo, location, created_by))
         self.connection.commit()
 
     def update_task_assigned_to(self, assigned_to, task_id):

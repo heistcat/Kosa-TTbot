@@ -1,4 +1,5 @@
 # handlers/executor.py
+import datetime
 import os
 from aiogram import Bot, Router, F, types
 from database import Database
@@ -25,6 +26,60 @@ class ReportTaskFSM(StatesGroup):
 class AddCommentEFSM(StatesGroup):
     waiting_for_comment = State()
     task_id = State()
+
+# FSM для изменения дедлайна
+class ChangeDeadlineFSM(StatesGroup):
+    waiting_for_new_deadline = State()
+    waiting_for_reason = State()
+    task_id = State()
+
+# Обработчик нажатия на кнопку "Запросить перенос" executor.py:
+@router.callback_query(F.data.startswith("request_redeadline:"))
+async def request_redeadline_handler(callback_query: CallbackQuery, state: FSMContext):
+    task_id = int(callback_query.data.split(":")[1])
+    await state.update_data(task_id=task_id)
+    await callback_query.message.answer(
+        "Введите новую дату и время дедлайна (в формате ДД-ММ-ГГГГ ЧЧ:ММ):",
+    )
+    await state.set_state(ChangeDeadlineFSM.waiting_for_new_deadline)
+
+@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_new_deadline))
+async def handle_new_deadline_executor(message: Message, state: FSMContext):
+    new_deadline = message.text
+    try:
+        datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
+        await state.update_data(new_deadline=new_deadline)
+        await message.answer("Введите причину переноса дедлайна:")
+        await state.set_state(ChangeDeadlineFSM.waiting_for_reason)
+    except ValueError:
+        await message.answer("Неверный формат даты. Пожалуйста, введите дату в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+
+@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_reason))
+async def handle_reason_executor(message: Message, state: FSMContext, db: Database, bot: Bot):
+    reason = message.text
+    data = await state.get_data()
+    task_id = data.get("task_id")
+    new_deadline = data.get("new_deadline")
+    task = db.get_task_by_id(task_id)
+
+    if task_id and new_deadline:
+        db.update_task_deadline(task_id, new_deadline)
+        creator = db.get_user_by_id(task['created_by'])
+        # Отправка уведомления в общий канал
+        task_text = (
+            f"⏰ <b>Дедлайн задачи изменен:</b>\n"
+            f"🔖 <b>Название:</b> {task['title']}\n"
+            f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
+            f"👤 <b>Исполнитель:</b> {db.get_user_by_id(message.from_user.id)['username']}\n"
+            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+            f"📝 <b>Причина:</b> {reason}\n"
+        )
+        await send_channel_message(bot, CHANNEL_ID, task_text)
+
+        await message.answer("Дедлайн задачи успешно изменен!")
+    else:
+        await message.answer("Произошла ошибка при изменении дедлайна.")
+    await state.clear()
 
 # В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
 @router.callback_query(F.data.startswith("add_comment_exec:"))
@@ -63,12 +118,16 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 assigned_users = ", ".join(valid_assigned_users)
             else:
                 assigned_users = "Не назначено"
+
+            creator = db.get_user_by_id(task['created_by'])
+
             task_text = (
                 f" <b>Детали задачи:</b>\n\n"
                 f"<b>Локация:</b> {task['location']}\n"
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
                 f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
+                f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
                 f" <b>Исполнители:</b> {assigned_users}\n"
                 f" <b>Статус:</b> {task['status']}\n\n"
                 
@@ -134,14 +193,17 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
     if not task:
         await callback_query.message.edit_text("Задача не найдена.")
         return
+    
+    creator = db.get_user_by_id(task['created_by'])
 
     task_text = (
-        f" <b>Детали задачи:</b>\n\n"
-        f"<b>Локация:</b> {task['location']}\n"
-        f" <b>Название:</b> {task['title']}\n"
-        f" <b>Стоимость задачи:</b> {task['description']}\n"
-        f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
-        f" <b>Статус:</b> {task['status']}\n\n"
+        f"<b>Детали задачи:</b>\n\n"
+        f"📍 <b>Локация:</b> {task['location']}\n"
+        f"🏷️ <b>Название:</b> {task['title']}\n"
+        f"💰 <b>Стоимость задачи:</b> {task['description']}\n"
+        f"⏰ <b>Дедлайн:</b> {task['deadline_formatted']}\n"
+        f"👤 <b>Создатель задачи:</b> {creator}\n"
+        f"📊 <b>Статус:</b> {task['status']}\n\n"
     )
 
     if task['comments'] and task['comments'] != '_':
@@ -330,11 +392,11 @@ async def executor_statistics(message: types.Message, db: Database):
     response = (
         " <b>Ваша статистика:</b>\n\n"
         f"<b>Задачи:</b>\n"
-        f"Всего: {total_user_tasks}\n"
-        f"Ожидают выполнения: {pending_user_tasks}\n"
-        f"В работе: {is_on_work_user_tasks}\n"
-        f"Выполнены: {done_user_tasks}\n"
-        f"Завершены: {completed_user_tasks}\n"
+        f"📊 Всего: {total_user_tasks}\n"
+        f"⏳ Ожидают выполнения: {pending_user_tasks}\n"
+        f"🛠️ В работе: {is_on_work_user_tasks}\n"
+        f"✅ Выполнены: {done_user_tasks}\n"
+        f"🎉 Завершены: {completed_user_tasks}\n"
     )
 
     await message.answer(response, parse_mode="HTML")

@@ -32,6 +32,62 @@ class AddCommentFSM(StatesGroup):
     waiting_for_comment = State()
     task_id = State()
 
+    # FSM для изменения дедлайна
+class ChangeDeadlineFSM(StatesGroup):
+    waiting_for_new_deadline = State()
+    waiting_for_reason = State()
+    task_id = State()
+
+@router.callback_query(F.data.startswith("redeadline:"))
+async def redeadline_handler(callback_query: CallbackQuery, state: FSMContext):
+    task_id = int(callback_query.data.split(":")[1])
+    await state.update_data(task_id=task_id)
+    await callback_query.message.answer(
+        "Введите новую дату и время дедлайна (в формате ДД-ММ-ГГГГ ЧЧ:ММ):",
+    )
+    await state.set_state(ChangeDeadlineFSM.waiting_for_new_deadline)
+
+@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_new_deadline))
+async def handle_new_deadline_admin(message: Message, state: FSMContext):
+    new_deadline = message.text
+    try:
+        datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
+        await state.update_data(new_deadline=new_deadline)
+        await message.answer("Введите причину переноса дедлайна:")
+        await state.set_state(ChangeDeadlineFSM.waiting_for_reason)
+    except ValueError:
+        await message.answer("Неверный формат даты. Пожалуйста, введите дату в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+
+@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_reason))
+async def handle_reason_admin(message: Message, state: FSMContext, db: Database, bot: Bot):
+    reason = message.text
+    data = await state.get_data()
+    task_id = data.get("task_id")
+    new_deadline = data.get("new_deadline")
+    task = db.get_task_by_id(task_id)
+
+    if task_id and new_deadline:
+        db.update_task_deadline(task_id, new_deadline)
+
+        creator = db.get_user_by_id(task['created_by'])
+
+        
+        # Отправка уведомления в общий канал
+        task_text = (
+            f"⏰ <b>Дедлайн задачи изменен:</b>\n"
+            f"🔖 <b>Название:</b> {task['title']}\n"
+            f"👤 <b>Изменил:</b> {db.get_user_by_id(message.from_user.id)['username']}( {db.get_user_by_id(message.from_user.id)['role']})\n"
+            f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
+            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+            f"📝 <b>Причина:</b> {reason}\n"
+        )
+        await send_channel_message(bot, CHANNEL_ID, task_text)
+
+        await message.answer("Дедлайн задачи успешно изменен!")
+    else:
+        await message.answer("Произошла ошибка при изменении дедлайна.")
+    await state.clear()
+
 async def format_task_text(task: dict, db: Database) -> str:
     """Форматирует текст задачи, включая комментарии и исполнителей."""
     if task['assigned_to']:
@@ -41,14 +97,17 @@ async def format_task_text(task: dict, db: Database) -> str:
     else:
         assigned_users_str = "Не назначено"
 
+    creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Неизвестно"
+
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
-        f"<b>Локация:</b> {task['location']}\n"
-        f"<b>Название:</b> {task['title']}\n"
-        f"<b>Стоимость задачи:</b> {task['description']}\n"
-        f"<b>Дедлайн:</b> {task['deadline_formatted']}\n"
-        f"<b>Исполнители:</b> {assigned_users_str}\n"
-        f"<b>Статус:</b> {task['status']}\n\n"
+        f"<b>📍 Локация:</b> {task['location']}\n"
+        f"<b>🏷️ Название:</b> {task['title']}\n"
+        f"<b>💰 Стоимость задачи:</b> {task['description']}\n"
+        f"<b>⏰ Дедлайн:</b> {task['deadline_formatted']}\n"
+        f"👤 <b>Создатель задачи:</b> {creator}\n"
+        f"<b>📌 Исполнители:</b> {assigned_users_str}\n"
+        f"<b>📊 Статус:</b> {task['status']}\n\n"
     )
 
     if task['comments'] and task['comments'] != '_':
@@ -104,40 +163,6 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
         await state.clear() # очищаем FSM
         # Обновляем сообщение с задачей, чтобы отобразить новый комментарий (нужно получить task и сформировать текст)
         task = db.get_task_by_id(task_id)
-        if task:
-            assigned_users = ", ".join([
-                f"{db.get_user_by_id(int(user))['username']}"
-                for user in task['assigned_to'].split(",")
-            ])
-            task_text = (
-                f" <b>Детали задачи:</b>\n\n"
-                f"<b>Локация:</b> {task['location']}\n"
-                f" <b>Название:</b> {task['title']}\n"
-                f" <b>Стоимость задачи:</b> {task['description']}\n"
-                f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
-                f" <b>Исполнители:</b> {assigned_users}\n"
-                f" <b>Статус:</b> {task['status']}\n\n"
-            )
-            if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
-                formatted_comments = ""
-                for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
-                    formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
-
-                task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
-
-            if message.photo:
-                await message.answer_photo(
-                    photo=message.photo[-1].file_id,
-                    caption=task_text,
-                    reply_markup=task_admin_keyboard(task_id, task['status']),
-                    parse_mode="HTML"
-                )
-            else:
-                await message.answer(
-                    task_text,
-                    reply_markup=task_admin_keyboard(task_id, task['status']),
-                    parse_mode="HTML"
-                )
     else:
         await message.answer("Произошла ошибка при добавлении комментария.")
         await state.clear()
@@ -146,7 +171,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
         task_text = await format_task_text(task, db) # Используем функцию форматирования
 
         if message.photo:
-            await message.answer_photo(photo=message.photo[-1].file_id, caption=task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
+            await message.answer_photo(photo=task['ref_photo'], caption=task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
         else:
             await message.answer(task_text, reply_markup=task_admin_keyboard(task_id, task['status']), parse_mode="HTML")
 
@@ -319,11 +344,14 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
         assigned_to=",".join(map(str, executors)),  # Храним как строку с ID через запятую
         report_text="#",
         report_photo="#",
-        location=data.get("location") # Добавляем location
+        location=data.get("location"), # Добавляем location
+        created_by=callback_query.from_user.id # Сохраняем ID создателя
     )
 
     await notify_executors(bot, executors, data["title"], data['deadline'])
-    executors_str = ", ".join(db.get_user_by_id(user_id)['username'] for user_id in executors)
+
+    execs = ",".join(db.get_user_by_id(executor_id)['username'] for executor_id in executors)
+    creator = db.get_user_by_id(callback_query.from_user.id)['username']
 
     # Отправка уведомления в общий канал
     task_text = (
@@ -331,7 +359,8 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
         f"🔖 <b>Название:</b> {data['title']}\n"
         f"📍 <b>Локация:</b> {data.get('location')}\n"  # Добавляем локацию в уведомление
         f"⏰ <b>Дедлайн:</b> {data['deadline']}\n"
-        f"👤 <b>Исполнители:</b> {executors_str}\n"
+        f"👤 <b>Создатель:</b> {creator}\n"
+        f"👤 <b>Исполнители:</b> {execs}\n"
     )
     await send_channel_message(bot, CHANNEL_ID, task_text)
 
@@ -381,53 +410,53 @@ async def view_task(callback_query: CallbackQuery, db: Database):
         await callback_query.message.edit_text("Задача не найдена.")
         return
 
-    if task['assigned_to']: # Проверяем, есть ли вообще назначенные исполнители
-        assigned_users_list = task['assigned_to'].split(",")
-        valid_assigned_users = []
-        for user_id_str in assigned_users_list:
-            try:
-                user_id = int(user_id_str)
-                user = db.get_user_by_id(user_id)
-                if user:  # Проверяем, существует ли пользователь в базе
-                    valid_assigned_users.append(user['username'])
-            except ValueError:
-                pass
+    # if task['assigned_to']: # Проверяем, есть ли вообще назначенные исполнители
+    #     assigned_users_list = task['assigned_to'].split(",")
+    #     valid_assigned_users = []
+    #     for user_id_str in assigned_users_list:
+    #         try:
+    #             user_id = int(user_id_str)
+    #             user = db.get_user_by_id(user_id)
+    #             if user:  # Проверяем, существует ли пользователь в базе
+    #                 valid_assigned_users.append(user['username'])
+    #         except ValueError:
+    #             pass
 
-        assigned_users = ", ".join(valid_assigned_users)
-    else:
-        assigned_users = "Не назначено"
+    #     assigned_users = ", ".join(valid_assigned_users)
+    # else:
+    #     assigned_users = "Не назначено"
 
 
     # Формируем текст задачи с учетом комментариев
-    task_text = (
-        f"<b>Детали задачи:</b>\n\n"
-        f"<b>Локация:</b> {task['location']}\n"
-        f"<b>Название:</b> {task['title']}\n"
-        f"<b>Стоимость задачи:</b> {task['description']}\n"
-        f"<b>Дедлайн:</b> {task['deadline_formatted']}\n"
-        f"<b>Исполнители:</b> {assigned_users}\n"
-        f"<b>Статус:</b> {task['status']}\n\n"
-    )
-    if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
-        formatted_comments = ""
-        for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
-            formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
+    # task_text = (
+    #     f"<b>Детали задачи:</b>\n\n"
+    #     f"<b>📍 Локация:</b> {task['location']}\n"
+    #     f"<b>🏷️ Название:</b> {task['title']}\n"
+    #     f"<b>💰 Стоимость задачи:</b> {task['description']}\n"
+    #     f"<b>⏰ Дедлайн:</b> {task['deadline_formatted']}\n"
+    #     f"<b>📌 Исполнители:</b> {assigned_users}\n"
+    #     f"<b>📊 Статус:</b> {task['status']}\n\n"
+    # )
+    # if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
+    #     formatted_comments = ""
+    #     for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
+    #         formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
 
-        task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
+    #     task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
     
-    if task["ref_photo"]:
-        await callback_query.message.answer_photo(
-            photo=task["ref_photo"],
-            caption=task_text,
-            reply_markup=task_admin_keyboard(task_id, task['status']),
-            parse_mode="HTML"
-        )
-    else:
-        await callback_query.message.answer(
-            task_text,
-            reply_markup=task_admin_keyboard(task_id, task['status']),
-            parse_mode="HTML"
-        )
+    # if task["ref_photo"]:
+    #     await callback_query.message.answer_photo(
+    #         photo=task["ref_photo"],
+    #         caption=task_text,
+    #         reply_markup=task_admin_keyboard(task_id, task['status']),
+    #         parse_mode="HTML"
+    #     )
+    # else:
+    #     await callback_query.message.answer(
+    #         task_text,
+    #         reply_markup=task_admin_keyboard(task_id, task['status']),
+    #         parse_mode="HTML"
+    #     )
     
 
 def create_task_list_keyboard(tasks):    
@@ -723,15 +752,15 @@ async def admin_statistics(message: types.Message, db: Database):
     response = (
         " <b>Общая статистика:</b>\n\n"
         f"<b>Задачи:</b>\n"
-        f"Всего: {total_tasks}\n"
-        f"Ожидают выполнения: {pending_tasks}\n"
-        f"В работе: {is_on_work_tasks}\n"
-        f"Выполнены: {done_tasks}\n"
-        f"Завершены: {completed_tasks}\n\n"
+        f"📊 Всего: {total_tasks}\n"
+        f"⏳ Ожидают выполнения: {pending_tasks}\n"
+        f"🛠️ В работе: {is_on_work_tasks}\n"
+        f"✅ Выполнены: {done_tasks}\n"
+        f"🎉 Завершены: {completed_tasks}\n\n"
         f"<b>Пользователи:</b>\n"
-        f"Всего: {total_users}\n"
-        f"Администраторы: {admin_users}\n"
-        f"Исполнители: {executor_users}\n"
+        f"👥 Всего: {total_users}\n"
+        f"👑 Администраторы: {admin_users}\n"
+        f"👨‍🔧 Исполнители: {executor_users}\n"
         f"<b>Статистика по пользователям:</b>" # Заголовок для выбора пользователя
     )
     users = db.get_all_users()
@@ -762,11 +791,11 @@ async def user_statistics(callback_query: CallbackQuery, db: Database):
     response = (
         f" <b>Статистика пользователя {user['username']} ({user['name']}):</b>\n\n"
         f"<b>Задачи:</b>\n"
-        f"Всего: {total_user_tasks}\n"
-        f"Ожидают выполнения: {pending_user_tasks}\n"
-        f"В работе: {is_on_work_user_tasks}\n"
-        f"Выполнены: {done_user_tasks}\n"
-        f"Завершены: {completed_user_tasks}\n"
+        f"📊 Всего: {total_user_tasks}\n"
+        f"⏳ Ожидают выполнения: {pending_user_tasks}\n"
+        f"🛠️ В работе: {is_on_work_user_tasks}\n"
+        f"✅ Выполнены: {done_user_tasks}\n"
+        f"🎉 Завершены: {completed_user_tasks}\n"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Назад", callback_data="back_to_stats")] # Кнопка "Назад"
