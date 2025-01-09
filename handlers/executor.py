@@ -1,4 +1,6 @@
-from aiogram import Router, F, types
+# handlers/executor.py
+import os
+from aiogram import Bot, Router, F, types
 from database import Database
 from keyboards.inline import task_executor_keyboard, task_executor_keyboarda
 from aiogram.types import CallbackQuery
@@ -6,10 +8,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
-
+from utils import send_channel_message
+from dotenv import load_dotenv
 
 
 router = Router()
+load_dotenv()
+CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 class ReportTaskFSM(StatesGroup):
     task_id = State()
@@ -63,7 +68,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 f"<b>Локация:</b> {task['location']}\n"
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
-                f" <b>Дедлайн:</b> {task['deadline']}\n"
+                f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
                 f" <b>Исполнители:</b> {assigned_users}\n"
                 f" <b>Статус:</b> {task['status']}\n\n"
                 
@@ -135,7 +140,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         f"<b>Локация:</b> {task['location']}\n"
         f" <b>Название:</b> {task['title']}\n"
         f" <b>Стоимость задачи:</b> {task['description']}\n"
-        f" <b>Дедлайн:</b> {task['deadline']}\n"
+        f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
         f" <b>Статус:</b> {task['status']}\n\n"
     )
 
@@ -202,13 +207,12 @@ async def back_to_my_tasks(callback_query: CallbackQuery, db: Database):
 
     # Удаляем старое сообщение и отправляем список задач
     await callback_query.message.delete()
-    await callback_query.message.edit_text(" Ваши задачи:", reply_markup=keyboard) # Используем edit_text
+    await callback_query.message.answer("📋 Ваши задачи:", reply_markup=keyboard) # Используем edit_text
 
     
 @router.callback_query(F.data.startswith("take_task:"))
-async def take_task_handler(callback_query: CallbackQuery):
-    db = Database()
-    user_id = callback_query.message.from_user.id
+async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bot):
+    user_id = callback_query.from_user.id
     task_id = callback_query.data.split(":")[1]
 
     tasks = db.get_tasks_by_user(user_id)
@@ -225,12 +229,21 @@ async def take_task_handler(callback_query: CallbackQuery):
         return  # Ничего не делаем, если задача уже завершена
     else:
         db.update_task_status(task_id, "is_on_work")
+        task = db.get_task_by_id(task_id)
         await callback_query.message.edit_reply_markup(reply_markup=task_executor_keyboarda(task_id))
         await callback_query.message.answer("Вы взялись за задачу!")
+    
+        # Отправка уведомления в общий канал
+        task_text = (
+           f"🛠️ <b>Задача взята в работу:</b>\n"
+            f"🔖 <b>Название:</b> {task['title']}\n"
+            f"👤 <b>Исполнитель:</b> {db.get_user_by_id(user_id)['username']}\n"
+        )
+        await send_channel_message(bot, CHANNEL_ID, task_text)
 
 
 @router.callback_query(F.data.startswith("complete_task:"))
-async def complete_task_handler(callback_query: CallbackQuery, state: FSMContext):
+async def complete_task_handler(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
     task_id = callback_query.data.split(":")[1]
     await state.update_data(task_id=task_id)  # Сохраняем task_id в состояние
     print(f"Task ID: {task_id}")
@@ -248,7 +261,7 @@ async def handle_report_photo(message: Message, state: FSMContext):
     await state.set_state(ReportTaskFSM.report_text)
 
 @router.message(F.text, StateFilter(ReportTaskFSM.report_text))
-async def handle_report_text(message: Message, state: FSMContext, db: Database):
+async def handle_report_text(message: Message, state: FSMContext, db: Database, bot: Bot):
     # Получаем текст отчета
     report_text = message.text
 
@@ -259,6 +272,18 @@ async def handle_report_text(message: Message, state: FSMContext, db: Database):
 
     # Обновляем задачу в базе данных
     db.update_task_report(task_id, report_text, photo_id)
+    task = db.get_task_by_id(task_id)
+
+    # Отправка уведомления в общий канал
+    user_id = message.from_user.id
+    task_text = (
+        f"✅ <b>Задача завершена:</b>\n"
+        f"🔖 <b>Название:</b> {task['title']}\n"
+        f"👤 <b>Исполнитель:</b> {db.get_user_by_id(user_id)['username']}\n"
+    )
+    await send_channel_message(bot, CHANNEL_ID, task_text)
+
+
     
     # Завершаем FSM
     await state.clear()
@@ -314,4 +339,3 @@ async def executor_statistics(message: types.Message, db: Database):
 
     await message.answer(response, parse_mode="HTML")
     await message.delete()
-    

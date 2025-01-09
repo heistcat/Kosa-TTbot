@@ -1,3 +1,4 @@
+# handlers/admin.py
 from aiogram import Router, F, Bot, types
 from aiogram.filters import StateFilter
 from aiogram.types import Message
@@ -8,7 +9,9 @@ from keyboards.inline import assign_executor_keyboard, empty_keyboard, role_sele
 from database import Database
 from aiogram.types import CallbackQuery, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from handlers.common import send_menu
-from bot import bot
+from bot import instance as bot, CHANNEL_ID
+from utils import send_channel_message
+from datetime import datetime
 
 
 router = Router()
@@ -43,7 +46,7 @@ async def format_task_text(task: dict, db: Database) -> str:
         f"<b>Локация:</b> {task['location']}\n"
         f"<b>Название:</b> {task['title']}\n"
         f"<b>Стоимость задачи:</b> {task['description']}\n"
-        f"<b>Дедлайн:</b> {task['deadline']}\n"
+        f"<b>Дедлайн:</b> {task['deadline_formatted']}\n"
         f"<b>Исполнители:</b> {assigned_users_str}\n"
         f"<b>Статус:</b> {task['status']}\n\n"
     )
@@ -57,9 +60,8 @@ async def format_task_text(task: dict, db: Database) -> str:
     return task_text
 
 @router.callback_query(F.data.startswith("take_task:"))
-async def take_task_handler(callback_query: CallbackQuery):
-    db = Database()
-    user_id = callback_query.message.from_user.id
+async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bot):
+    user_id = callback_query.from_user.id
     task_id = callback_query.data.split(":")[1]
 
     tasks = db.get_tasks_by_user(user_id)
@@ -69,8 +71,17 @@ async def take_task_handler(callback_query: CallbackQuery):
         await callback_query.answer("Вы уже работаете над задачей, завершите её, чтобы перейти к следующей!", show_alert=True)
     else:
         db.update_task_status(task_id, "is_on_work")
-        task_status = db.get_task_by_id(task_id)["status"]
+        task = db.get_task_by_id(task_id)
+        task_status = task["status"]
         await callback_query.message.edit_reply_markup(reply_markup=task_admin_keyboard(task_id, task_status))
+
+        # Отправка уведомления в общий канал
+        task_text = (
+            f"🛠️ <b>Задача взята в работу:</b>\n"
+            f"🔖 <b>Название:</b> {task['title']}\n"
+            f"👤 <b>Исполнитель:</b> {db.get_user_by_id(user_id)['username']}\n"
+        )
+        await send_channel_message(bot, CHANNEL_ID, task_text)
 
 # В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
 @router.callback_query(F.data.startswith("add_comment:"))
@@ -103,7 +114,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 f"<b>Локация:</b> {task['location']}\n"
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
-                f" <b>Дедлайн:</b> {task['deadline']}\n"
+                f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
                 f" <b>Исполнители:</b> {assigned_users}\n"
                 f" <b>Статус:</b> {task['status']}\n\n"
             )
@@ -183,17 +194,23 @@ async def handle_task_title(message: Message, state: FSMContext):
 @router.message(F.text, StateFilter(CreateTaskFSM.description))
 async def handle_task_description(message: Message, state: FSMContext):
     await state.update_data(description=message.text)
-    await message.answer("Введите дедлайн задачи (в формате ДД-ММ):")
+    await message.answer("Введите дедлайн задачи (ДД-ММ-ГГГГ ЧЧ:ММ):")
     await message.delete()  # Удаляем сообщение с выбором
     await state.set_state(CreateTaskFSM.deadline)
     
 # Ввод дедлайна задачи
 @router.message(F.text, StateFilter(CreateTaskFSM.deadline))
 async def handle_task_deadline(message: Message, state: FSMContext):
-    await state.update_data(deadline=message.text)
-    await message.answer("Загрузите фото-референс задачи:", reply_markup=skip_photo)
-    await message.delete()  # Удаляем сообщение с выбором
-    await state.set_state(CreateTaskFSM.photo)
+    deadline_str = message.text
+    try:
+        datetime.strptime(deadline_str, "%d-%m-%Y %H:%M")
+        await state.update_data(deadline=deadline_str)
+        await message.answer("Загрузите фото-референс задачи:", reply_markup=skip_photo)
+        await message.delete()  # Удаляем сообщение с выбором
+        await state.set_state(CreateTaskFSM.photo)
+    except ValueError:
+        await message.answer("Неверный формат даты. Пожалуйста, введите дату в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+
 
 # Загрузка фото-референса (изменено)
 @router.message(F.photo, StateFilter(CreateTaskFSM.photo))
@@ -297,6 +314,7 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
         title=data["title"],
         description=data["description"],
         deadline=data["deadline"],
+        deadline_formatted=data["deadline"],
         ref_photo=data["photo"] or None,
         assigned_to=",".join(map(str, executors)),  # Храним как строку с ID через запятую
         report_text="#",
@@ -305,6 +323,18 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
     )
 
     await notify_executors(bot, executors, data["title"], data['deadline'])
+    executors_str = ", ".join(db.get_user_by_id(user_id)['username'] for user_id in executors)
+
+    # Отправка уведомления в общий канал
+    task_text = (
+        f"📌 <b>Новая задача создана:</b>\n"
+        f"🔖 <b>Название:</b> {data['title']}\n"
+        f"📍 <b>Локация:</b> {data.get('location')}\n"  # Добавляем локацию в уведомление
+        f"⏰ <b>Дедлайн:</b> {data['deadline']}\n"
+        f"👤 <b>Исполнители:</b> {executors_str}\n"
+    )
+    await send_channel_message(bot, CHANNEL_ID, task_text)
+
 
     await callback_query.message.answer("Задача успешно создана!", reply_markup=admin_menu_keyboard)
     await callback_query.message.delete()  # Удаляем сообщение с выбором
@@ -367,13 +397,14 @@ async def view_task(callback_query: CallbackQuery, db: Database):
     else:
         assigned_users = "Не назначено"
 
+
     # Формируем текст задачи с учетом комментариев
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
         f"<b>Локация:</b> {task['location']}\n"
         f"<b>Название:</b> {task['title']}\n"
         f"<b>Стоимость задачи:</b> {task['description']}\n"
-        f"<b>Дедлайн:</b> {task['deadline']}\n"
+        f"<b>Дедлайн:</b> {task['deadline_formatted']}\n"
         f"<b>Исполнители:</b> {assigned_users}\n"
         f"<b>Статус:</b> {task['status']}\n\n"
     )
@@ -384,8 +415,6 @@ async def view_task(callback_query: CallbackQuery, db: Database):
 
         task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
     
-    await callback_query.message.delete()
-
     if task["ref_photo"]:
         await callback_query.message.answer_photo(
             photo=task["ref_photo"],
@@ -545,6 +574,14 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
 
     await notify_executors(bot, selected_executors, task['title'], task['deadline'])
 
+    # Отправка уведомления в общий канал
+    task_text = (
+        f"🔄 <b>Исполнители задачи переназначены:</b>\n"
+        f"🔖 <b>Название:</b> {task['title']}\n"
+        f"👤 <b>Новые исполнители:</b> {selected_executors}\n"
+    )
+    await send_channel_message(bot, CHANNEL_ID, task_text)
+
     await callback_query.message.answer("Исполнители успешно назначены!")
     await callback_query.message.delete()  # Удаляем сообщение с выбором
     await state.clear()
@@ -569,9 +606,19 @@ async def checktask_executor(callback_query, state: FSMContext, db: Database):
     await callback_query.message.delete()  # Удаляем сообщение с выбором
 
 @router.callback_query(F.data.startswith("approved:"))
-async def complete_task_executor(callback_query: CallbackQuery, db: Database):
+async def complete_task_executor(callback_query: CallbackQuery, db: Database, bot: Bot):
     task_id = callback_query.data.split(":")[1]
     db.update_task_status(task_id, 'completed')
+    task = db.get_task_by_id(task_id)
+    # Отправка уведомления в общий канал
+    task_text = (
+        f"🎉 <b>Задача подтверждена админом и завершена:</b>\n"
+        f"🔖 <b>Название:</b> {task['title']}\n"
+        f"👤 <b>Исполнитель:</b> {db.get_user_by_id(int(task['assigned_to']))['username']}\n"
+    )
+    await send_channel_message(bot, CHANNEL_ID, task_text)
+
+
     await callback_query.message.answer("Задача подтверждена")
     
 

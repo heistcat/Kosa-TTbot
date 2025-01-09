@@ -1,4 +1,6 @@
 import sqlite3
+import time
+from datetime import datetime
 
 class Database:
     def __init__(self, db_path="database.db"):
@@ -26,7 +28,8 @@ class Database:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT,
-            deadline TEXT,
+            deadline INTEGER,
+            deadline_formatted TEXT,
             ref_photo TEXT,
             assigned_to TEXT,
             location TEXT,
@@ -95,12 +98,13 @@ class Database:
         return self.connection.execute(query).fetchall()
 
     # --- Методы для работы с задачами ---
-    def create_task(self, title, description, ref_photo, deadline, assigned_to, report_text, report_photo, location):
+    def create_task(self, title, description, ref_photo, deadline, deadline_formatted, assigned_to, report_text, report_photo, location):
         """Создание задачи."""
+        timestamp = int(time.mktime(datetime.strptime(deadline, "%d-%m-%Y %H:%M").timetuple()))
         self.connection.execute("""
-        INSERT INTO tasks (title, description, ref_photo, deadline, assigned_to, report_text, report_photo, location)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (title, description, ref_photo, deadline, assigned_to, report_text, report_photo, location))
+        INSERT INTO tasks (title, description, ref_photo, deadline, deadline_formatted, assigned_to, report_text, report_photo, location)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, description, ref_photo, timestamp, deadline_formatted, assigned_to, report_text, report_photo, location))
         self.connection.commit()
 
     def update_task_assigned_to(self, assigned_to, task_id):
@@ -127,7 +131,7 @@ class Database:
     def get_tasks_by_user(self, user_id):
         """Получение задач, назначенных конкретному пользователю."""
         query = """
-        SELECT *
+        SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
         FROM tasks
         WHERE ',' || assigned_to || ',' LIKE '%,' || ? || ',%';
         """
@@ -135,7 +139,10 @@ class Database:
 
     def get_task_by_id(self, task_id):
         """Получение задачи по ID."""
-        query = "SELECT * FROM tasks WHERE id = ?"
+        query = """
+        SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
+        FROM tasks WHERE id = ?
+        """
         return self.connection.execute(query, (task_id,)).fetchone()
 
     def update_task_status(self, task_id, status):
@@ -154,7 +161,9 @@ class Database:
 
     def get_all_tasks(self):
         """Получение всех задач."""
-        query = "SELECT * FROM tasks ORDER BY deadline ASC"
+        query = """
+        SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted FROM tasks ORDER BY deadline ASC
+        """
         return self.connection.execute(query).fetchall()
 
     # --- Методы для работы со статистикой ---
@@ -263,3 +272,9 @@ class Database:
         """Возвращает количество пользователей с определенной ролью."""
         self.cursor.execute("SELECT COUNT(*) FROM users WHERE role = ?", (role,))
         return self.cursor.fetchone()[0]
+    
+    def update_task_deadline(self, task_id, new_deadline):
+        """Обновляет дедлайн задачи."""
+        timestamp = int(time.mktime(datetime.strptime(new_deadline, "%d-%m-%Y %H:%M").timetuple()))
+        self.cursor.execute("UPDATE tasks SET deadline = ? WHERE id = ?", (timestamp, task_id))
+        self.connection.commit()
