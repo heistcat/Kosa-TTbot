@@ -83,7 +83,7 @@ def task_admin_keyboard(task_id: int, status):
     else:
         buttons = [
             [InlineKeyboardButton(text="📲 Взяться за задачу", callback_data=f"take_task:{task_id}")],
-            [InlineKeyboardButton(text="🎯 Переназначить", callback_data=f"reassign_task:{task_id}")],
+            [InlineKeyboardButton(text="🔄 Переназначить", callback_data=f"reassign_task:{task_id}")],
             [InlineKeyboardButton(text="🗓️ Перенести дедлайн", callback_data=f"redeadline:{task_id}")],
             [
                 InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),

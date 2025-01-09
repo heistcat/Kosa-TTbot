@@ -69,7 +69,7 @@ async def handle_reason_admin(message: Message, state: FSMContext, db: Database,
     if task_id and new_deadline:
         db.update_task_deadline(task_id, new_deadline)
 
-        creator = db.get_user_by_id(task['created_by'])
+        creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Admin"
 
         
         # Отправка уведомления в общий канал
@@ -77,7 +77,7 @@ async def handle_reason_admin(message: Message, state: FSMContext, db: Database,
             f"⏰ <b>Дедлайн задачи изменен:</b>\n"
             f"🔖 <b>Название:</b> {task['title']}\n"
             f"👤 <b>Изменил:</b> {db.get_user_by_id(message.from_user.id)['username']}( {db.get_user_by_id(message.from_user.id)['role']})\n"
-            f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
+            f"👤 <b>Создатель задачи:</b> {creator}\n"
             f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
             f"📝 <b>Причина:</b> {reason}\n"
         )
@@ -351,7 +351,7 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
     await notify_executors(bot, executors, data["title"], data['deadline'])
 
     execs = ",".join(db.get_user_by_id(executor_id)['username'] for executor_id in executors)
-    creator = db.get_user_by_id(callback_query.from_user.id)['username']
+    creator = db.get_user_by_id(callback_query.from_user.id)['username'] if db.get_user_by_id(callback_query.from_user.id) else "Неизвестно"
 
     # Отправка уведомления в общий канал
     task_text = (
@@ -410,53 +410,6 @@ async def view_task(callback_query: CallbackQuery, db: Database):
         await callback_query.message.edit_text("Задача не найдена.")
         return
 
-    # if task['assigned_to']: # Проверяем, есть ли вообще назначенные исполнители
-    #     assigned_users_list = task['assigned_to'].split(",")
-    #     valid_assigned_users = []
-    #     for user_id_str in assigned_users_list:
-    #         try:
-    #             user_id = int(user_id_str)
-    #             user = db.get_user_by_id(user_id)
-    #             if user:  # Проверяем, существует ли пользователь в базе
-    #                 valid_assigned_users.append(user['username'])
-    #         except ValueError:
-    #             pass
-
-    #     assigned_users = ", ".join(valid_assigned_users)
-    # else:
-    #     assigned_users = "Не назначено"
-
-
-    # Формируем текст задачи с учетом комментариев
-    # task_text = (
-    #     f"<b>Детали задачи:</b>\n\n"
-    #     f"<b>📍 Локация:</b> {task['location']}\n"
-    #     f"<b>🏷️ Название:</b> {task['title']}\n"
-    #     f"<b>💰 Стоимость задачи:</b> {task['description']}\n"
-    #     f"<b>⏰ Дедлайн:</b> {task['deadline_formatted']}\n"
-    #     f"<b>📌 Исполнители:</b> {assigned_users}\n"
-    #     f"<b>📊 Статус:</b> {task['status']}\n\n"
-    # )
-    # if task['comments'] and task['comments'] != '_': # Проверяем, есть ли комментарии
-    #     formatted_comments = ""
-    #     for comment in task['comments'].strip().split('\n'):  # Разделяем комментарии по строкам
-    #         formatted_comments += f"<blockquote>{comment}</blockquote>\n" # Оборачиваем каждый комментарий в <blockquote>
-
-    #     task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
-    
-    # if task["ref_photo"]:
-    #     await callback_query.message.answer_photo(
-    #         photo=task["ref_photo"],
-    #         caption=task_text,
-    #         reply_markup=task_admin_keyboard(task_id, task['status']),
-    #         parse_mode="HTML"
-    #     )
-    # else:
-    #     await callback_query.message.answer(
-    #         task_text,
-    #         reply_markup=task_admin_keyboard(task_id, task['status']),
-    #         parse_mode="HTML"
-    #     )
     
 
 def create_task_list_keyboard(tasks):    
@@ -603,11 +556,13 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
 
     await notify_executors(bot, selected_executors, task['title'], task['deadline'])
 
+    execs = ",".join(db.get_user_by_id(executor_id)['username'] for executor_id in selected_executors)
+
     # Отправка уведомления в общий канал
     task_text = (
         f"🔄 <b>Исполнители задачи переназначены:</b>\n"
         f"🔖 <b>Название:</b> {task['title']}\n"
-        f"👤 <b>Новые исполнители:</b> {selected_executors}\n"
+        f"👤 <b>Новые исполнители:</b> {execs}\n"
     )
     await send_channel_message(bot, CHANNEL_ID, task_text)
 
