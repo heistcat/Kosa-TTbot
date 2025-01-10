@@ -38,6 +38,56 @@ class ChangeDeadlineFSM(StatesGroup):
     waiting_for_reason = State()
     task_id = State()
 
+@router.callback_query(F.data.startswith("approve_redeadline:"))
+async def approve_redeadline_handler(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
+    """Обработчик для подтверждения переноса дедлайна."""
+    task_id = int(callback_query.data.split(":")[1])
+    data = await state.get_data()
+    new_deadline = data.get("new_deadline")
+    task = db.get_task_by_id(task_id)
+    if task and new_deadline:
+        db.update_task_deadline(task_id, new_deadline)
+        
+        # Отправка уведомления в общий канал
+        task_text = (
+            f"⏰ <b>Дедлайн задачи изменен:</b>\n"
+            f"🔖 <b>Название:</b> {task['title']}\n"
+            f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username']}\n"
+            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+        )
+        await send_channel_message(bot, CHANNEL_ID, task_text)
+
+        await callback_query.message.answer("Дедлайн задачи успешно изменен!")
+    else:
+        await callback_query.message.answer("Произошла ошибка при изменении дедлайна.")
+    await state.clear()
+
+@router.callback_query(F.data.startswith("reject_redeadline:"))
+async def reject_redeadline_handler(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
+    """Обработчик для отказа в переносе дедлайна."""
+    task_id = int(callback_query.data.split(":")[1])
+    data = await state.get_data()
+    task = db.get_task_by_id(task_id)
+    if task and task['assigned_to']:
+        for user_id in task['assigned_to'].split(','):
+            user_id = int(user_id)
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"❌ <b>В переносе дедлайна отказано:</b>\n"
+                        f"🔖 <b>Название задачи:</b> {task['title']}\n"
+                        f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username']}\n"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+        await callback_query.message.answer("Вы отказали в переносе дедлайна.")
+    else:
+        await callback_query.message.answer("Произошла ошибка при отказе в переносе дедлайна.")
+    await state.clear()
+
 @router.callback_query(F.data.startswith("redeadline:"))
 async def redeadline_handler(callback_query: CallbackQuery, state: FSMContext):
     task_id = int(callback_query.data.split(":")[1])
@@ -98,13 +148,14 @@ async def format_task_text(task: dict, db: Database) -> str:
         assigned_users_str = "Не назначено"
 
     creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Неизвестно"
+    deadline = datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
 
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
         f"<b>📍 Локация:</b> {task['location']}\n"
         f"<b>🏷️ Название:</b> {task['title']}\n"
         f"<b>💰 Стоимость задачи:</b> {task['description']}\n"
-        f"<b>⏰ Дедлайн:</b> {task['deadline_formatted']}\n"
+        f"<b>⏰ Дедлайн:</b> {deadline}\n"
         f"👤 <b>Создатель задачи:</b> {creator}\n"
         f"<b>📌 Исполнители:</b> {assigned_users_str}\n"
         f"<b>📊 Статус:</b> {task['status']}\n\n"
@@ -604,6 +655,30 @@ async def complete_task_executor(callback_query: CallbackQuery, db: Database, bo
 
 
     await callback_query.message.answer("Задача подтверждена")
+
+@router.callback_query(F.data.startswith("rejected:"))
+async def rejected_task_executor(callback_query: CallbackQuery, db: Database, bot: Bot):
+    task_id = callback_query.data.split(":")[1]
+    task = db.get_task_by_id(task_id)
+    if task and task['assigned_to']:
+        for user_id in task['assigned_to'].split(','):
+            user_id = int(user_id)
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"❌ <b>Задача отправлена на доработку:</b>\n"
+                        f"🔖 <b>Название:</b> {task['title']}\n"
+                        f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username'] or "Admin"}\n"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+        db.update_task_status(task_id, 'pending')
+        await callback_query.message.answer("Задача отправлена на доработку.")
+    else:
+        await callback_query.message.answer("Произошла ошибка при отправке задачи на доработку.")
     
 
 @router.callback_query(F.data.startswith("add_comment:"))

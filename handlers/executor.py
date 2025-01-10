@@ -31,6 +31,7 @@ class AddCommentEFSM(StatesGroup):
 class ChangeDeadlineFSM(StatesGroup):
     waiting_for_new_deadline = State()
     waiting_for_reason = State()
+    waiting_for_admin_confirmation = State() # Добавлено новое состояние
     task_id = State()
 
 # Обработчик нажатия на кнопку "Запросить перенос" executor.py:
@@ -63,23 +64,34 @@ async def handle_reason_executor(message: Message, state: FSMContext, db: Databa
     task = db.get_task_by_id(task_id)
 
     if task_id and new_deadline:
-        db.update_task_deadline(task_id, new_deadline)
-        creator = db.get_user_by_id(task['created_by'])
-        # Отправка уведомления в общий канал
-        task_text = (
-            f"⏰ <b>Дедлайн задачи изменен:</b>\n"
-            f"🔖 <b>Название:</b> {task['title']}\n"
-            f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
-            f"👤 <b>Исполнитель:</b> {db.get_user_by_id(message.from_user.id)['username']}\n"
-            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
-            f"📝 <b>Причина:</b> {reason}\n"
-        )
-        await send_channel_message(bot, CHANNEL_ID, task_text)
-
-        await message.answer("Дедлайн задачи успешно изменен!")
+        
+        # Отправка уведомления админу
+        admin_users = db.get_all_users()
+        if admin_users:
+            for user in admin_users:
+                if user['role'] == 'Админ':
+                    try:
+                        await bot.send_message(
+                            chat_id=user['user_id'],
+                            text=(
+                                f"📌 <b>Запрос на перенос дедлайна:</b>\n"
+                                f"🔖 <b>Название задачи:</b> {task['title']}\n"
+                                f"👤 <b>Исполнитель:</b> {db.get_user_by_id(message.from_user.id)['username']}\n"
+                                f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+                                f"📝 <b>Причина:</b> {reason}\n"
+                                f"Для подтверждения или отказа, перейдите к задаче."
+                            ),
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        print(f"Не удалось отправить уведомление админу {user['user_id']}: {e}")
+                    break
+        
+        await message.answer("Запрос на перенос дедлайна отправлен администратору, ожидайте подтверждения.")
+        await state.set_state(ChangeDeadlineFSM.waiting_for_admin_confirmation)
     else:
         await message.answer("Произошла ошибка при изменении дедлайна.")
-    await state.clear()
+        await state.clear()
 
 # В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
 @router.callback_query(F.data.startswith("add_comment_exec:"))
@@ -120,13 +132,14 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 assigned_users = "Не назначено"
 
             creator = db.get_user_by_id(task['created_by'])
+            deadline = datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
 
             task_text = (
                 f" <b>Детали задачи:</b>\n\n"
                 f"<b>Локация:</b> {task['location']}\n"
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
-                f" <b>Дедлайн:</b> {task['deadline_formatted']}\n"
+                f" <b>Дедлайн:</b> {deadline}\n"
                 f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
                 f" <b>Исполнители:</b> {assigned_users}\n"
                 f" <b>Статус:</b> {task['status']}\n\n"
@@ -195,13 +208,14 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         return
     
     creator = db.get_user_by_id(task['created_by'])
+    deadline = datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
 
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
         f"📍 <b>Локация:</b> {task['location']}\n"
         f"🏷️ <b>Название:</b> {task['title']}\n"
         f"💰 <b>Стоимость задачи:</b> {task['description']}\n"
-        f"⏰ <b>Дедлайн:</b> {task['deadline_formatted']}\n"
+        f"⏰ <b>Дедлайн:</b> {deadline}\n"
         f"👤 <b>Создатель задачи:</b> {creator}\n"
         f"📊 <b>Статус:</b> {task['status']}\n\n"
     )

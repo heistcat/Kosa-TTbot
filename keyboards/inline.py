@@ -80,6 +80,17 @@ def task_admin_keyboard(task_id: int, status):
         [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_filter_list:{status}")]
         # [InlineKeyboardButton(text="Удалить задачу", callback_data=f"delete_task:{task_id}")]
         ]
+    elif status == 'pending':
+        buttons = [
+            [InlineKeyboardButton(text="📲 Взяться за задачу", callback_data=f"take_task:{task_id}")],
+            [InlineKeyboardButton(text="🔄 Переназначить", callback_data=f"reassign_task:{task_id}")],
+            [InlineKeyboardButton(text="🗓️ Перенести дедлайн", callback_data=f"redeadline:{task_id}")],
+            [
+                InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
+                InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_task:{task_id}")
+            ],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")]
+        ]
     else:
         buttons = [
             [InlineKeyboardButton(text="📲 Взяться за задачу", callback_data=f"take_task:{task_id}")],
@@ -100,7 +111,10 @@ def task_admin_keyboardb(task_id: int):
     """
     # Создаем список кнопок с callback_data
     buttons = [
-        [InlineKeyboardButton(text="✅ Потдвердить", callback_data=f"approved:{task_id}")],
+        [
+            InlineKeyboardButton(text="✅ Потдвердить", callback_data=f"approved:{task_id}"),
+            InlineKeyboardButton(text="❌ Отказать", callback_data=f"rejected:{task_id}")
+        ],
         [
             InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
             InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")
