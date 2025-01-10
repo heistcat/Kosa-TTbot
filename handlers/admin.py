@@ -669,7 +669,8 @@ async def rejected_task_executor(callback_query: CallbackQuery, db: Database, bo
                     text=(
                         f"❌ <b>Задача отправлена на доработку:</b>\n"
                         f"🔖 <b>Название:</b> {task['title']}\n"
-                        f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username'] or "Admin"}\n"
+                        # f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username'] or "Admin"}\n"
+                        f"👤 <b>Администратор:</b> {task['created_by']}\n"
                     ),
                     parse_mode="HTML"
                 )
