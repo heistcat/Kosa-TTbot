@@ -3,7 +3,7 @@ import datetime
 import os
 from aiogram import Bot, Router, F, types
 from database import Database
-from keyboards.inline import task_executor_keyboard, task_executor_keyboarda
+from keyboards.inline import task_admin_redeadline_keyboard, task_executor_keyboard, task_executor_keyboarda
 from aiogram.types import CallbackQuery
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -28,7 +28,7 @@ class AddCommentEFSM(StatesGroup):
     task_id = State()
 
 # FSM для изменения дедлайна
-class ChangeDeadlineFSM(StatesGroup):
+class ChangeDeadlineExecFSM(StatesGroup):
     waiting_for_new_deadline = State()
     waiting_for_reason = State()
     waiting_for_admin_confirmation = State() # Добавлено новое состояние
@@ -42,27 +42,26 @@ async def request_redeadline_handler(callback_query: CallbackQuery, state: FSMCo
     await callback_query.message.answer(
         "Введите новую дату и время дедлайна (в формате ДД-ММ-ГГГГ ЧЧ:ММ):",
     )
-    await state.set_state(ChangeDeadlineFSM.waiting_for_new_deadline)
+    await state.set_state(ChangeDeadlineExecFSM.waiting_for_new_deadline)
 
-@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_new_deadline))
+@router.message(F.text, StateFilter(ChangeDeadlineExecFSM.waiting_for_new_deadline))
 async def handle_new_deadline_executor(message: Message, state: FSMContext):
     new_deadline = message.text
     try:
-        datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
+        datetime.datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
         await state.update_data(new_deadline=new_deadline)
         await message.answer("Введите причину переноса дедлайна:")
-        await state.set_state(ChangeDeadlineFSM.waiting_for_reason)
+        await state.set_state(ChangeDeadlineExecFSM.waiting_for_reason)
     except ValueError:
         await message.answer("Неверный формат даты. Пожалуйста, введите дату в формате ДД-ММ-ГГГГ ЧЧ:ММ")
 
-@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_reason))
+@router.message(F.text, StateFilter(ChangeDeadlineExecFSM.waiting_for_reason))
 async def handle_reason_executor(message: Message, state: FSMContext, db: Database, bot: Bot):
     reason = message.text
     data = await state.get_data()
     task_id = data.get("task_id")
     new_deadline = data.get("new_deadline")
     task = db.get_task_by_id(task_id)
-
     if task_id and new_deadline:
         
         # Отправка уведомления админу
@@ -81,17 +80,32 @@ async def handle_reason_executor(message: Message, state: FSMContext, db: Databa
                                 f"📝 <b>Причина:</b> {reason}\n"
                                 f"Для подтверждения или отказа, перейдите к задаче."
                             ),
-                            parse_mode="HTML"
+                            parse_mode="HTML",
+                            reply_markup=task_admin_redeadline_keyboard(task_id, new_deadline)
                         )
                     except Exception as e:
                         print(f"Не удалось отправить уведомление админу {user['user_id']}: {e}")
                     break
         
         await message.answer("Запрос на перенос дедлайна отправлен администратору, ожидайте подтверждения.")
-        await state.set_state(ChangeDeadlineFSM.waiting_for_admin_confirmation)
+        await state.set_state(ChangeDeadlineExecFSM.waiting_for_admin_confirmation)
+
+        # Запись в историю
+        db.add_task_history_entry(
+            task_id=task_id,
+            user_id=message.from_user.id,
+            action="Запрос на перенос дедлайна",
+            details=f"Новый дедлайн: {new_deadline}, Причина: {reason}"
+        )
     else:
         await message.answer("Произошла ошибка при изменении дедлайна.")
-        await state.clear()
+    await state.clear()
+
+@router.message(StateFilter(ChangeDeadlineExecFSM.waiting_for_admin_confirmation))
+async def handle_waiting_for_admin_confirmation(message: Message, state: FSMContext):
+    """Обработчик для состояния ожидания подтверждения от администратора."""
+    await message.answer("Ожидайте подтверждения или отказа от администратора.")
+    await state.clear()
 
 # В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
 @router.callback_query(F.data.startswith("add_comment_exec:"))
@@ -208,7 +222,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         return
     
     creator = db.get_user_by_id(task['created_by'])
-    deadline = datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
+    deadline = datetime.datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
 
     task_text = (
         f"<b>Детали задачи:</b>\n\n"
@@ -216,7 +230,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         f"🏷️ <b>Название:</b> {task['title']}\n"
         f"💰 <b>Стоимость задачи:</b> {task['description']}\n"
         f"⏰ <b>Дедлайн:</b> {deadline}\n"
-        f"👤 <b>Создатель задачи:</b> {creator}\n"
+        f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
         f"📊 <b>Статус:</b> {task['status']}\n\n"
     )
 
@@ -317,6 +331,14 @@ async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bo
         )
         await send_channel_message(bot, CHANNEL_ID, task_text)
 
+                # Запись в историю
+        db.add_task_history_entry(
+            task_id=task_id,
+            user_id=callback_query.from_user.id,
+            action="Задача взята в работу",
+            details=f"Исполнитель: {db.get_user_by_id(user_id)['username']}"
+        )
+
 
 @router.callback_query(F.data.startswith("complete_task:"))
 async def complete_task_handler(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
@@ -358,6 +380,14 @@ async def handle_report_text(message: Message, state: FSMContext, db: Database, 
         f"👤 <b>Исполнитель:</b> {db.get_user_by_id(user_id)['username']}\n"
     )
     await send_channel_message(bot, CHANNEL_ID, task_text)
+
+        # Запись в историю
+    db.add_task_history_entry(
+        task_id=task_id,
+        user_id=message.from_user.id,
+        action="Задача завершена исолнителем",
+        details=f"Отчет: {report_text}"
+    )
 
 
     

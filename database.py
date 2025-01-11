@@ -47,6 +47,17 @@ class Database:
             user_id TEXT UNIQUE
         )
         """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS task_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            timestamp INTEGER,
+            user_id TEXT,
+            action TEXT,
+            details TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks(id)
+        )
+        """)
         self.connection.commit()
 
 
@@ -143,6 +154,14 @@ class Database:
         query = """
         SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
         FROM tasks WHERE id = ?
+        """
+        return self.connection.execute(query, (task_id,)).fetchone()
+    
+    def get_task_by_title(self, task_id):
+        """Получение задачи по ID."""
+        query = """
+        SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
+        FROM tasks WHERE title = ?
         """
         return self.connection.execute(query, (task_id,)).fetchone()
 
@@ -277,5 +296,25 @@ class Database:
     def update_task_deadline(self, task_id, new_deadline):
         """Обновляет дедлайн задачи."""
         timestamp = int(time.mktime(datetime.strptime(new_deadline, "%d-%m-%Y %H:%M").timetuple()))
+        # timestamp = int(new_deadline)
         self.cursor.execute("UPDATE tasks SET deadline = ? WHERE id = ?", (timestamp, task_id))
         self.connection.commit()
+
+    def add_task_history_entry(self, task_id, user_id, action, details):
+        """Добавляет запись в историю изменений задачи."""
+        timestamp = int(time.time())
+        self.cursor.execute("""
+            INSERT INTO task_history (task_id, timestamp, user_id, action, details)
+            VALUES (?, ?, ?, ?, ?)
+        """, (task_id, timestamp, user_id, action, details))
+        self.connection.commit()
+
+    def get_task_history(self, task_id):
+        """Получает историю изменений задачи."""
+        query = """
+            SELECT timestamp, user_id, action, details
+            FROM task_history
+            WHERE task_id = ?
+            ORDER BY timestamp ASC
+        """
+        return self.connection.execute(query, (task_id,)).fetchall()

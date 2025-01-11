@@ -1,11 +1,12 @@
 # handlers/admin.py
+import time
 from aiogram import Router, F, Bot, types
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from keyboards.reply import admin_menu_keyboard, skip_photo, executor_menu_keyboard
-from keyboards.inline import assign_executor_keyboard, empty_keyboard, role_selection_keyboard, task_admin_keyboard, task_admin_keyboardb, reassign_executor_keyboard, user_list_keyboard
+from keyboards.inline import assign_executor_keyboard, empty_keyboard, role_selection_keyboard, task_admin_keyboard, task_admin_keyboardb, reassign_executor_keyboard, task_admin_redeadline_keyboard, user_list_keyboard
 from database import Database
 from aiogram.types import CallbackQuery, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from handlers.common import send_menu
@@ -35,31 +36,107 @@ class AddCommentFSM(StatesGroup):
     # FSM для изменения дедлайна
 class ChangeDeadlineFSM(StatesGroup):
     waiting_for_new_deadline = State()
-    waiting_for_reason = State()
     task_id = State()
+
+@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_new_deadline))
+async def handle_new_deadline_admin(message: Message, state: FSMContext, db: Database, bot: Bot):
+    new_deadline = message.text
+    try:
+        datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
+        data = await state.get_data()
+        task_id = data.get("task_id")
+        task = db.get_task_by_id(task_id)
+        if task_id and new_deadline:
+            db.update_task_deadline(task_id, new_deadline)
+
+            creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Admin"
+
+            
+            # Отправка уведомления в общий канал
+            task_text = (
+                f"⏰ <b>Дедлайн задачи изменен:</b>\n"
+                f"🔖 <b>Название:</b> {task['title']}\n"
+                f"👤 <b>Изменил:</b> {db.get_user_by_id(message.from_user.id)['username']}( {db.get_user_by_id(message.from_user.id)['role']})\n"
+                f"👤 <b>Создатель задачи:</b> {creator}\n"
+                f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+            )
+            await send_channel_message(bot, CHANNEL_ID, task_text)
+
+            # Запись в историю
+            db.add_task_history_entry(
+                task_id=task_id,
+                user_id=message.from_user.id,
+                action="Дедлайн изменен",
+                details=f"Новый дедлайн: {new_deadline}"
+            )
+
+            await message.answer("Дедлайн задачи успешно изменен!")
+        else:
+            await message.answer("Произошла ошибка при изменении дедлайна.")
+        await state.clear()
+    except ValueError:
+        await message.answer("Неверный формат даты. Пожалуйста, введите дату в формате ДД-ММ-ГГГГ ЧЧ:ММ")
+        print(new_deadline)
+
+
 
 @router.callback_query(F.data.startswith("approve_redeadline:"))
 async def approve_redeadline_handler(callback_query: CallbackQuery, state: FSMContext, db: Database, bot: Bot):
+    print(callback_query.data)
     """Обработчик для подтверждения переноса дедлайна."""
-    task_id = int(callback_query.data.split(":")[1])
+    task_id = int(callback_query.data.split(":")[1].split(",")[0])
+    new_deadline = str(callback_query.data.split(",")[1])
     data = await state.get_data()
-    new_deadline = data.get("new_deadline")
+    # new_deadline = data.get("new_deadline")
+    print(new_deadline)
     task = db.get_task_by_id(task_id)
-    if task and new_deadline:
-        db.update_task_deadline(task_id, new_deadline)
-        
-        # Отправка уведомления в общий канал
-        task_text = (
-            f"⏰ <b>Дедлайн задачи изменен:</b>\n"
-            f"🔖 <b>Название:</b> {task['title']}\n"
-            f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username']}\n"
-            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+    creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Admin"
+    try:
+        if task and new_deadline:
+            datetime_object = datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
+            new_deadline2 = int(time.mktime(datetime_object.timetuple()))
+            print(new_deadline)
+            db.update_task_deadline(task_id, new_deadline2)
+            
+            # Отправка уведомления в общий канал
+            task_text = (
+                f"⏰ <b>Дедлайн задачи изменен:</b>\n"
+                f"🔖 <b>Название:</b> {task['title']}\n"
+                f"👤 <b>Администратор:</b> {db.get_user_by_id(callback_query.from_user.id)['username']}\n"
+                f"👤 <b>Создатель задачи:</b> {creator}\n"
+                f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+            )
+            await send_channel_message(bot, CHANNEL_ID, task_text)
+
+                    # Запись в историю
+        db.add_task_history_entry(
+            task_id=task_id,
+            user_id=callback_query.from_user.id,
+            action="Запрос на перенос дедлайна подтвержден",
+            details=f"Новый дедлайн: {new_deadline}"
         )
-        await send_channel_message(bot, CHANNEL_ID, task_text)
+
+            # Отправка уведомления исполнителю
+        if task['assigned_to']:
+            for user_id in task['assigned_to'].split(','):
+                user_id = int(user_id)
+                try:
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text=(
+                            f"✅ <b>Ваш запрос на перенос дедлайна подтвержден:</b>\n"
+                            f"🔖 <b>Название задачи:</b> {task['title']}\n"
+                            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
+                        ),
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
 
         await callback_query.message.answer("Дедлайн задачи успешно изменен!")
-    else:
+    except Exception as e:
         await callback_query.message.answer("Произошла ошибка при изменении дедлайна.")
+        print()
     await state.clear()
 
 @router.callback_query(F.data.startswith("reject_redeadline:"))
@@ -103,40 +180,9 @@ async def handle_new_deadline_admin(message: Message, state: FSMContext):
     try:
         datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
         await state.update_data(new_deadline=new_deadline)
-        await message.answer("Введите причину переноса дедлайна:")
-        await state.set_state(ChangeDeadlineFSM.waiting_for_reason)
     except ValueError:
         await message.answer("Неверный формат даты. Пожалуйста, введите дату в формате ДД-ММ-ГГГГ ЧЧ:ММ")
 
-@router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_reason))
-async def handle_reason_admin(message: Message, state: FSMContext, db: Database, bot: Bot):
-    reason = message.text
-    data = await state.get_data()
-    task_id = data.get("task_id")
-    new_deadline = data.get("new_deadline")
-    task = db.get_task_by_id(task_id)
-
-    if task_id and new_deadline:
-        db.update_task_deadline(task_id, new_deadline)
-
-        creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Admin"
-
-        
-        # Отправка уведомления в общий канал
-        task_text = (
-            f"⏰ <b>Дедлайн задачи изменен:</b>\n"
-            f"🔖 <b>Название:</b> {task['title']}\n"
-            f"👤 <b>Изменил:</b> {db.get_user_by_id(message.from_user.id)['username']}( {db.get_user_by_id(message.from_user.id)['role']})\n"
-            f"👤 <b>Создатель задачи:</b> {creator}\n"
-            f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
-            f"📝 <b>Причина:</b> {reason}\n"
-        )
-        await send_channel_message(bot, CHANNEL_ID, task_text)
-
-        await message.answer("Дедлайн задачи успешно изменен!")
-    else:
-        await message.answer("Произошла ошибка при изменении дедлайна.")
-    await state.clear()
 
 async def format_task_text(task: dict, db: Database) -> str:
     """Форматирует текст задачи, включая комментарии и исполнителей."""
@@ -192,6 +238,13 @@ async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bo
             f"👤 <b>Исполнитель:</b> {db.get_user_by_id(user_id)['username']}\n"
         )
         await send_channel_message(bot, CHANNEL_ID, task_text)
+        # Запись в историю
+        db.add_task_history_entry(
+            task_id=task_id,
+            user_id=callback_query.from_user.id,
+            action="Задача взята в работу",
+            details=f"Исполнитель: {db.get_user_by_id(user_id)['username']}"
+        )
 
 # В admin.py и executor.py (обработчик нажатия на кнопку "Добавить комментарий")
 @router.callback_query(F.data.startswith("add_comment:"))
@@ -415,10 +468,28 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
     )
     await send_channel_message(bot, CHANNEL_ID, task_text)
 
+        # Запись в историю
+
 
     await callback_query.message.answer("Задача успешно создана!", reply_markup=admin_menu_keyboard)
     await callback_query.message.delete()  # Удаляем сообщение с выбором
     await state.clear()
+
+        # Получаем task_id созданной задачи
+    task = db.get_task_by_title(data["title"])
+    if task:
+        task_id = task['id']
+    else:
+        await callback_query.message.answer("Произошла ошибка при получении ID задачи.")
+        await state.clear()
+        return
+
+    db.add_task_history_entry(
+        task_id=task_id or 0,
+        user_id=callback_query.from_user.id,
+        action="Задача создана",
+        details=f"Cоздатель: {creator}, \nИсполнители: {execs}"
+    )
 
 
 
@@ -617,6 +688,14 @@ async def finish_executor_selection(callback_query: CallbackQuery, state: FSMCon
     )
     await send_channel_message(bot, CHANNEL_ID, task_text)
 
+        # Запись в историю
+    db.add_task_history_entry(
+        task_id=task_id,
+        user_id=callback_query.from_user.id,
+        action="Исполнители задачи переназначены",
+        details=f"Новые исполнители: {execs}"
+    )
+
     await callback_query.message.answer("Исполнители успешно назначены!")
     await callback_query.message.delete()  # Удаляем сообщение с выбором
     await state.clear()
@@ -652,6 +731,14 @@ async def complete_task_executor(callback_query: CallbackQuery, db: Database, bo
         f"👤 <b>Исполнитель:</b> {db.get_user_by_id(int(task['assigned_to']))['username']}\n"
     )
     await send_channel_message(bot, CHANNEL_ID, task_text)
+
+    # Запись в историю
+    db.add_task_history_entry(
+        task_id=task_id,
+        user_id=callback_query.from_user.id,
+        action="Задача завершена",
+        details=f"Задача подтверждена админом и завершена"
+    )
 
 
     await callback_query.message.answer("Задача подтверждена")
@@ -696,6 +783,14 @@ async def delete_task_handler(callback_query: CallbackQuery, db: Database):
     try:
         db.delete_task(task_id=task_id)
         await callback_query.message.answer("Задача удалена!", show_alert=True)
+
+        # Запись в историю
+        db.add_task_history_entry(
+            task_id=task_id,
+            user_id=callback_query.from_user.id,
+            action="Задача удалена",
+            details=f"ID задачи: {task_id}"
+        )
     except Exception as e:
         await callback_query.message.answer(f"Ошибка при удалении: {e}", show_alert=True)
     await callback_query.message.delete()
@@ -882,3 +977,28 @@ async def user_info_handler(callback_query: CallbackQuery, db: Database):
         await callback_query.message.edit_text(f"Информация о пользователе:\n{user['username']} : {user['role']}", reply_markup=keyboard)
     else:
         await callback_query.message.edit_text("Пользователь не найден.")
+
+@router.callback_query(F.data.startswith("view_task_history:"))
+async def view_task_history(callback_query: CallbackQuery, db: Database):
+    """Отображает историю изменений задачи."""
+    task_id = int(callback_query.data.split(":")[1])
+    history = db.get_task_history(task_id)
+
+    if not history:
+        await callback_query.message.answer("История изменений для данной задачи не найдена.")
+        return
+
+    history_text = f"<b>История изменений задачи (ID: {task_id}):</b>\n\n"
+    for entry in history:
+        timestamp = datetime.fromtimestamp(entry['timestamp']).strftime("%d-%m-%Y %H:%M")
+        history_text += (
+            f"""<b>{timestamp}</b>
+<blockquote>
+<b>Действие:</b> {entry['action']}
+<b>Пользователь:</b> {db.get_user_by_id(entry['user_id'])['username'] if db.get_user_by_id(entry['user_id']) else 'Неизвестно'}
+<b>Детали:</b> {entry['details']}
+</blockquote>\n
+"""
+        )
+
+    await callback_query.message.answer(history_text, parse_mode="HTML")

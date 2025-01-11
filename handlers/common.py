@@ -78,6 +78,9 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
             db.register_su(user_id=user_id)
             await message.answer(f"ROOT: Welcome to the club, buddy!\n\n", 
                          reply_markup=admin_menu_keyboard)
+        # db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Админ")
+        # await message.answer(f"Добро пожаловать в Admin-меню!", 
+        #                  reply_markup=admin_menu_keyboard)
     else:
         db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Исполнитель")
         await message.answer(f"Добро пожаловать в меню исполнителя!\n\n(если вы админ, то свяжитесь с текущим админом что бы вас назначили админом)\n\n", 

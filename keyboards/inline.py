@@ -62,12 +62,14 @@ def task_admin_keyboard(task_id: int, status):
     # Создаем список кнопок с callback_data
         buttons = [
             [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_task:{task_id}")],
+            [InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")]
         ]
     elif status == 'is_on_work':
         buttons = [
             [InlineKeyboardButton(text="✅ Завершить", callback_data=f"complete_task:{task_id}")],
             [InlineKeyboardButton(text="🗓️ Перенести дедлайн", callback_data=f"redeadline:{task_id}")],
+            [InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}")],
             [
                 InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
                 InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")
@@ -76,8 +78,11 @@ def task_admin_keyboard(task_id: int, status):
     elif status == 'done':
         buttons = [
         [InlineKeyboardButton(text="☑️ Проверить", callback_data=f"checktask:{task_id}")],
-        [InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_filter_list:{status}")]
+        [InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}")],
+        [
+            InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
+            InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_filter_list:{status}")
+        ]
         # [InlineKeyboardButton(text="Удалить задачу", callback_data=f"delete_task:{task_id}")]
         ]
     elif status == 'pending':
@@ -89,7 +94,10 @@ def task_admin_keyboard(task_id: int, status):
                 InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
                 InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_task:{task_id}")
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")]
+            [
+                InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}"),
+                InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")
+            ]        
         ]
     else:
         buttons = [
@@ -100,7 +108,10 @@ def task_admin_keyboard(task_id: int, status):
                 InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
                 InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_task:{task_id}")
             ],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")]
+            [
+                InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}"),
+                InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")
+            ]
         ]
     # Создаем клавиатуру с этими кнопками
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -139,6 +150,23 @@ def reassign_executor_keyboard(executors, task_id, allow_finish=False):
     if allow_finish:
         buttons.append([InlineKeyboardButton(text="Завершить выбор", callback_data="finish_selectionw")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def task_admin_redeadline_keyboard(task_id: int, deadline: str):
+    """
+    Создает клавиатуру для подтверждения или отказа переноса дедлайна.
+    """
+    buttons = [
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_redeadline:{task_id},{deadline}"),
+            InlineKeyboardButton(text="❌ Отказать", callback_data=f"reject_redeadline:{task_id}")
+        ],
+        [
+            InlineKeyboardButton(text="💬 Коммент", callback_data=f"add_comment:{task_id}"),
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 
 def user_list_keyboard(users):
