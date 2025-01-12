@@ -8,6 +8,8 @@ from database import Database
 from handlers import common, admin, executor
 from dotenv import load_dotenv
 
+from utils import send_channel_message
+
 
 load_dotenv()
 
@@ -82,6 +84,50 @@ async def check_deadlines(bot: Bot, db: Database):
         await asyncio.sleep(1800)  # Проверяем каждую минуту
 
 
+async def reset_scores_yearly(bot: Bot, db: Database):
+    """Обнуляет баллы всех пользователей в начале каждого года."""
+    while True:
+        now = datetime.now()
+        if now.month <= 2 and now.day == 1 and now.hour == 0 and now.minute == 0:
+            db.reset_all_scores()
+            print("Баллы всех пользователей обнулены!")
+            
+            admin_users = db.get_all_users()
+            if admin_users:
+                for user in admin_users:
+                    if user['role'] == 'Админ':
+                        try:
+                            await bot.send_message(
+                                chat_id=user['user_id'],
+                                text="🎉 <b>Баллы всех пользователей обнулены!</b>\n\nНачинаем новый год с новыми баллами!",
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            print(f"Не удалось отправить уведомление админу {user['user_id']}: {e}")
+                        break
+            
+            # Отправка уведомления в общий канал
+            task_text = "🎉 <b>Баллы всех пользователей обнулены!</b>\n\nНачинаем новый год с новыми баллами!"
+            await send_channel_message(bot, CHANNEL_ID, task_text)
+
+            await asyncio.sleep(60)  # Ждем 1 минуту, чтобы не обнулять баллы несколько раз
+        await asyncio.sleep(86400)  # Проверяем каждую минуту
+
+async def create_default_tariffs(db: Database):
+    """Создает дефолтные тарифы, если их нет."""
+    default_tariffs = [
+        {"tariff_name": "day_early", "time_threshold": 86400, "score": 50},
+        {"tariff_name": "6hours_early", "time_threshold": 21600, "score": 15},
+        {"tariff_name": "hour_early", "time_threshold": 3600, "score": 10},
+        {"tariff_name": "15min_late", "time_threshold": 900, "score": 0},
+        {"tariff_name": "30min_late", "time_threshold": 1800, "score": 10},
+        {"tariff_name": "hour_late", "time_threshold": 3600, "score": 30},
+    ]
+    for tariff in default_tariffs:
+        if not db.get_tariff(tariff['tariff_name']):
+            db.create_tariff(tariff['tariff_name'], tariff['time_threshold'], tariff['score'])
+            print(f"Создан тариф: {tariff['tariff_name']}")
+
 
 async def main():
     dp = Dispatcher(storage=MemoryStorage())
@@ -90,6 +136,13 @@ async def main():
     dp.include_router(admin.router)
     dp.include_router(executor.router)
     dp["db"] = db
+
+    # Создаем дефолтные тарифы
+    await create_default_tariffs(db)
+
+
+    # Запускаем функцию обнуления баллов в фоновом режиме
+    asyncio.create_task(reset_scores_yearly(instance, db))
 
 
     try:

@@ -58,6 +58,22 @@ class Database:
             FOREIGN KEY (task_id) REFERENCES tasks(id)
         )
         """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT UNIQUE,
+            score INTEGER DEFAULT 0,
+            last_update INTEGER
+        )
+        """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS score_tariffs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tariff_name TEXT UNIQUE,
+            time_threshold INTEGER,
+            score INTEGER
+        )
+        """)
         self.connection.commit()
 
 
@@ -295,8 +311,8 @@ class Database:
     
     def update_task_deadline(self, task_id, new_deadline):
         """Обновляет дедлайн задачи."""
-        timestamp = int(time.mktime(datetime.strptime(new_deadline, "%d-%m-%Y %H:%M").timetuple()))
-        # timestamp = int(new_deadline)
+        # timestamp = int(time.mktime(datetime.strptime(new_deadline, "%d-%m-%Y %H:%M").timetuple()))
+        timestamp = int(new_deadline)
         self.cursor.execute("UPDATE tasks SET deadline = ? WHERE id = ?", (timestamp, task_id))
         self.connection.commit()
 
@@ -318,3 +334,72 @@ class Database:
             ORDER BY timestamp ASC
         """
         return self.connection.execute(query, (task_id,)).fetchall()
+    
+    def get_user_score(self, user_id):
+        """Получает баллы пользователя."""
+        query = "SELECT score FROM user_scores WHERE user_id = ?"
+        result = self.connection.execute(query, (user_id,)).fetchone()
+        if result:
+            return result['score']
+        return 0
+
+    def add_user_score(self, user_id, score):
+        """Начисляет баллы пользователю."""
+        timestamp = int(time.time())
+        self.cursor.execute("""
+            INSERT INTO user_scores (user_id, score, last_update)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET score = score + ?, last_update = ?
+        """, (user_id, score, timestamp, score, timestamp))
+        self.connection.commit()
+
+    def remove_user_score(self, user_id, score):
+        """Снимает баллы у пользователя."""
+        timestamp = int(time.time())
+        self.cursor.execute("""
+            INSERT INTO user_scores (user_id, score, last_update)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET score = score - ?, last_update = ?
+        """, (user_id, score, timestamp, score, timestamp))
+        self.connection.commit()
+
+    def reset_all_scores(self):
+        """Обнуляет баллы всех пользователей."""
+        timestamp = int(time.time())
+        self.cursor.execute("UPDATE user_scores SET score = 0, last_update = ?", (timestamp,))
+        self.connection.commit()
+
+    def get_tariff(self, tariff_name):
+        """Получает тариф по имени."""
+        query = "SELECT time_threshold, score FROM score_tariffs WHERE tariff_name = ?"
+        result = self.connection.execute(query, (tariff_name,)).fetchone()
+        if result:
+            return result
+        return None
+
+    def get_all_tariffs(self):
+        """Получает все тарифы."""
+        query = "SELECT * FROM score_tariffs"
+        return self.connection.execute(query).fetchall()
+
+    def update_tariff(self, tariff_name, time_threshold, score):
+        """Обновляет тариф."""
+        self.cursor.execute("""
+            INSERT INTO score_tariffs (tariff_name, time_threshold, score)
+            VALUES (?, ?, ?)
+            ON CONFLICT(tariff_name) DO UPDATE SET time_threshold = ?, score = ?
+        """, (tariff_name, time_threshold, score, time_threshold, score))
+        self.connection.commit()
+
+    def create_tariff(self, tariff_name, time_threshold, score):
+        """Создает новый тариф."""
+        self.cursor.execute("""
+            INSERT INTO score_tariffs (tariff_name, time_threshold, score)
+            VALUES (?, ?, ?)
+        """, (tariff_name, time_threshold, score))
+        self.connection.commit()
+
+    def delete_tariff(self, tariff_name):
+        """Удаляет тариф."""
+        self.cursor.execute("DELETE FROM score_tariffs WHERE tariff_name = ?", (tariff_name,))
+        self.connection.commit()

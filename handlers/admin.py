@@ -38,6 +38,19 @@ class ChangeDeadlineFSM(StatesGroup):
     waiting_for_new_deadline = State()
     task_id = State()
 
+# FSM для управления тарифами
+class ManageTariffsFSM(StatesGroup):
+    menu = State()
+    waiting_for_tariff_name = State()
+    waiting_for_time_threshold = State()
+    waiting_for_score = State()
+    waiting_for_tariff_to_update = State()
+    waiting_for_new_time_threshold = State()
+    waiting_for_new_score = State()
+    waiting_for_tariff_type = State()
+    waiting_for_tariff_to_delete = State()
+
+
 @router.message(F.text, StateFilter(ChangeDeadlineFSM.waiting_for_new_deadline))
 async def handle_new_deadline_admin(message: Message, state: FSMContext, db: Database, bot: Bot):
     new_deadline = message.text
@@ -85,9 +98,7 @@ async def approve_redeadline_handler(callback_query: CallbackQuery, state: FSMCo
     print(callback_query.data)
     """Обработчик для подтверждения переноса дедлайна."""
     task_id = int(callback_query.data.split(":")[1].split(",")[0])
-    new_deadline = str(callback_query.data.split(",")[1])
-    data = await state.get_data()
-    # new_deadline = data.get("new_deadline")
+    new_deadline = callback_query.data.split(",")[1]
     print(new_deadline)
     task = db.get_task_by_id(task_id)
     creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else "Admin"
@@ -95,7 +106,7 @@ async def approve_redeadline_handler(callback_query: CallbackQuery, state: FSMCo
         if task and new_deadline:
             datetime_object = datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
             new_deadline2 = int(time.mktime(datetime_object.timetuple()))
-            print(new_deadline)
+            print(new_deadline2)
             db.update_task_deadline(task_id, new_deadline2)
             
             # Отправка уведомления в общий канал
@@ -106,6 +117,8 @@ async def approve_redeadline_handler(callback_query: CallbackQuery, state: FSMCo
                 f"👤 <b>Создатель задачи:</b> {creator}\n"
                 f"📅 <b>Новый дедлайн:</b> {new_deadline}\n"
             )
+            
+            
             await send_channel_message(bot, CHANNEL_ID, task_text)
 
                     # Запись в историю
@@ -136,7 +149,7 @@ async def approve_redeadline_handler(callback_query: CallbackQuery, state: FSMCo
         await callback_query.message.answer("Дедлайн задачи успешно изменен!")
     except Exception as e:
         await callback_query.message.answer("Произошла ошибка при изменении дедлайна.")
-        print()
+        print(e.with_traceback())
     await state.clear()
 
 @router.callback_query(F.data.startswith("reject_redeadline:"))
@@ -740,7 +753,47 @@ async def complete_task_executor(callback_query: CallbackQuery, db: Database, bo
         details=f"Задача подтверждена админом и завершена"
     )
 
-
+   # Логика начисления/снятия баллов
+    current_time = int(time.time())
+    time_diff = task['deadline'] - current_time
+    if task['assigned_to']:
+        tariffs = db.get_all_tariffs()
+        for user_id in task['assigned_to'].split(','):
+            user_id = int(user_id)
+            if time_diff > 0:  # Задача выполнена раньше срока
+                for tariff in tariffs:
+                    if tariff['tariff_name'].endswith("_early") and time_diff >= tariff['time_threshold']:
+                        score = tariff['score']
+                        db.add_user_score(user_id, score)
+                        try:
+                            await bot.send_message(
+                                chat_id=user_id,
+                                text=(
+                                    f"✅ <b>Задача выполнена раньше срока. Начислено {score} баллов.</b>\n"
+                                    f"🔖 <b>Название задачи:</b> {task['title']}\n"
+                                ),
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+                        break
+            elif time_diff < 0:  # Задача просрочена
+                time_diff = abs(time_diff)
+                for tariff in tariffs:
+                    if tariff['tariff_name'].endswith("_late") and time_diff <= tariff['time_threshold']:
+                        score = tariff['score']
+                        db.remove_user_score(user_id, score)
+                        try:
+                            await bot.send_message(
+                                chat_id=user_id,
+                                text=(
+                                    f"❌ <b>Задача просрочена. Списано {abs(score)} баллов.</b>\n"
+                                    f"🔖 <b>Название задачи:</b> {task['title']}\n"
+                                ),
+                                parse_mode="HTML"
+                            )
+                        except Exception as e:
+                            print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
     await callback_query.message.answer("Задача подтверждена")
 
 @router.callback_query(F.data.startswith("rejected:"))
@@ -796,13 +849,16 @@ async def delete_task_handler(callback_query: CallbackQuery, db: Database):
     await callback_query.message.delete()
 
 
-@router.message(F.text == "Управление пользователями")
+@router.message(F.text == "Пользователи")
 async def view_users_handler(message: Message, db: Database):
     users = db.get_all_users()
     if users:
-        await message.answer("Список пользователей:", reply_markup=user_list_keyboard(users))
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{user['username']} : {user['role']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
+        ])
+        await message.answer("<b>Список пользователей</b>", parse_mode="HTML" , reply_markup=keyboard)
     else:
-        await message.answer("Пользователи не найдены.")
+        await message.answer("Пользователи не найдены.", parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("user_info:"))
 async def user_info_handler(callback_query: CallbackQuery, db: Database):
@@ -886,15 +942,12 @@ async def admin_statistics(message: types.Message, db: Database):
         f"<b>Пользователи:</b>\n"
         f"👥 Всего: {total_users}\n"
         f"👑 Администраторы: {admin_users}\n"
-        f"👨‍🔧 Исполнители: {executor_users}\n"
-        f"<b>Статистика по пользователям:</b>" # Заголовок для выбора пользователя
+        f"👨‍🔧 Исполнители: {executor_users}\n\n"
+        f"Статистика по пользователям доступна в разделе:\n<b>Пользователи</b>" # Заголовок для выбора пользователя
     )
     users = db.get_all_users()
     if users:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"{user['username']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
-        ])
-        await message.answer(response, parse_mode="HTML", reply_markup=keyboard)
+        await message.answer(response, parse_mode="HTML")
     else:
         await message.answer(response + "\nПользователи не найдены.", parse_mode="HTML")
     await message.delete()
@@ -913,6 +966,8 @@ async def user_statistics(callback_query: CallbackQuery, db: Database):
     is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
     done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
     completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
+    user_score = db.get_user_score(user_id)
+
 
     response = (
         f" <b>Статистика пользователя {user['username']} ({user['name']}):</b>\n\n"
@@ -922,6 +977,8 @@ async def user_statistics(callback_query: CallbackQuery, db: Database):
         f"🛠️ В работе: {is_on_work_user_tasks}\n"
         f"✅ Выполнены: {done_user_tasks}\n"
         f"🎉 Завершены: {completed_user_tasks}\n"
+        f"<b>Баллы:</b> {user_score}\n"
+
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Назад", callback_data="back_to_stats")] # Кнопка "Назад"
@@ -933,37 +990,37 @@ async def user_statistics(callback_query: CallbackQuery, db: Database):
 @router.callback_query(F.data == "back_to_stats")
 async def back_to_stats(callback_query: types.CallbackQuery, db: Database):
     """Возвращает к общему разделу статистики."""
-    total_tasks = db.get_total_tasks_count()
-    pending_tasks = db.get_tasks_count_by_status("pending")
-    is_on_work_tasks = db.get_tasks_count_by_status("is_on_work")
-    done_tasks = db.get_tasks_count_by_status("done")
-    completed_tasks = db.get_tasks_count_by_status("completed")
-    total_users = db.get_all_users_count()
-    admin_users = db.get_users_count_by_role("Админ")
-    executor_users = db.get_users_count_by_role("Исполнитель")
+    # total_tasks = db.get_total_tasks_count()
+    # pending_tasks = db.get_tasks_count_by_status("pending")
+    # is_on_work_tasks = db.get_tasks_count_by_status("is_on_work")
+    # done_tasks = db.get_tasks_count_by_status("done")
+    # completed_tasks = db.get_tasks_count_by_status("completed")
+    # total_users = db.get_all_users_count()
+    # admin_users = db.get_users_count_by_role("Админ")
+    # executor_users = db.get_users_count_by_role("Исполнитель")
 
-    response = (
-        " <b>Общая статистика:</b>\n\n"
-        f"<b>Задачи:</b>\n"
-        f"Всего: {total_tasks}\n"
-        f"Ожидают выполнения: {pending_tasks}\n"
-        f"В работе: {is_on_work_tasks}\n"
-        f"Выполнены: {done_tasks}\n"
-        f"Завершены: {completed_tasks}\n\n"
-        f"<b>Пользователи:</b>\n"
-        f"Всего: {total_users}\n"
-        f"Администраторы: {admin_users}\n"
-        f"Исполнители: {executor_users}\n"
-        f"<b>Статистика по пользователям:</b>"
-    )
+    # response = (
+        # " <b>Общая статистика:</b>\n\n"
+        # f"<b>Задачи:</b>\n"
+        # f"📊 Всего: {total_tasks}\n"
+        # f"⏳ Ожидают выполнения: {pending_tasks}\n"
+        # f"🛠️ В работе: {is_on_work_tasks}\n"
+        # f"✅ Выполнены: {done_tasks}\n"
+        # f"🎉 Завершены: {completed_tasks}\n\n"
+        # f"<b>Пользователи:</b>\n"
+        # f"👥 Всего: {total_users}\n"
+        # f"👑 Администраторы: {admin_users}\n"
+        # f"👨‍🔧 Исполнители: {executor_users}\n"
+        # f"<b>Управление пользователями</b>" # Заголовок для выбора пользователя
+    # )
     users = db.get_all_users()
     if users:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"{user['username']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
+            [InlineKeyboardButton(text=f"{user['username']} : {user['role']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
         ])
-        await callback_query.message.edit_text(response, parse_mode="HTML", reply_markup=keyboard) # Используем edit_text
+        await callback_query.message.edit_text("<b>Список пользователей</b>", parse_mode="HTML" , reply_markup=keyboard)
     else:
-        await callback_query.message.edit_text(response + "\nПользователи не найдены.", parse_mode="HTML") # Используем edit_text
+        await callback_query.message.edit_text("Пользователи не найдены.", parse_mode="HTML")
     await callback_query.answer()
 
 #Добавим кнопку для просмотра статистики пользователя в user_info_handler
@@ -974,7 +1031,7 @@ async def user_info_handler(callback_query: CallbackQuery, db: Database):
     if user:
         keyboard = role_selection_keyboard(user_id)
         keyboard.inline_keyboard.append([InlineKeyboardButton(text="Статистика пользователя", callback_data=f"user_stats:{user_id}")])
-        await callback_query.message.edit_text(f"Информация о пользователе:\n{user['username']} : {user['role']}", reply_markup=keyboard)
+        await callback_query.message.edit_text(f"Информация о пользователе:\n{user['username']} : {user['role']} ({db.get_user_score(user['user_id'])} Б)", reply_markup=keyboard)
     else:
         await callback_query.message.edit_text("Пользователь не найден.")
 
@@ -1002,3 +1059,167 @@ async def view_task_history(callback_query: CallbackQuery, db: Database):
         )
 
     await callback_query.message.answer(history_text, parse_mode="HTML")
+
+@router.message(F.text == "Тарифы")
+async def manage_tariffs_handler(message: Message, state: FSMContext):
+    """Обработчик для управления тарифами."""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📜 Просмотр тарифов", callback_data="view_tariffs")],
+        [InlineKeyboardButton(text="➕ Создать тариф", callback_data="create_tariff")],
+        [InlineKeyboardButton(text="✏️ Изменить тариф", callback_data="update_tariff")],
+        [InlineKeyboardButton(text="🗑️ Удалить тариф", callback_data="delete_tariff")],
+        # [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")]
+    ])
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+    await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data == "view_tariffs", StateFilter(ManageTariffsFSM.menu))
+async def view_tariffs_handler(callback_query: CallbackQuery, db: Database, state: FSMContext):
+    """Обработчик для просмотра тарифов."""
+    tariffs = db.get_all_tariffs()
+    if tariffs:
+        tariff_text = "<b>Список тарифов:</b>\n\n"
+        for tariff in tariffs:
+            tariff_text += (
+                f"<b>Название:</b> {tariff['tariff_name']}\n"
+                f"<b>Порог времени:</b> {int(tariff['time_threshold']) / 60} минут\n"
+                f"<b>Баллы:</b> {tariff['score'] if tariff['tariff_name'].endswith('early') else abs(tariff['score'])}\n\n"
+            )
+        await callback_query.message.edit_text(tariff_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_tariffs_menu")]]))
+    else:
+        await callback_query.message.answer("Тарифы не найдены.")
+    await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data == "back_to_tariffs_menu", StateFilter(ManageTariffsFSM.menu))
+async def back_to_tariffs_menu_handler(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик для возврата к меню тарифов."""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📜 Просмотр тарифов", callback_data="view_tariffs")],
+        [InlineKeyboardButton(text="➕ Создать тариф", callback_data="create_tariff")],
+        [InlineKeyboardButton(text="✏️ Изменить тариф", callback_data="update_tariff")],
+        [InlineKeyboardButton(text="🗑️ Удалить тариф", callback_data="delete_tariff")],
+        # [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")]
+    ])
+    await callback_query.message.edit_text("Выберите действие:", reply_markup=keyboard)
+    await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data == "create_tariff", StateFilter(ManageTariffsFSM.menu))
+async def create_tariff_handler(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик для создания тарифа."""
+    await callback_query.message.answer("Введите название нового тарифа:")
+    await state.set_state(ManageTariffsFSM.waiting_for_tariff_name)
+
+@router.message(F.text, StateFilter(ManageTariffsFSM.waiting_for_tariff_name))
+async def handle_tariff_name(message: Message, state: FSMContext):
+    """Обработчик для получения названия тарифа."""
+    await state.update_data(tariff_name=message.text)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ начисление", callback_data="tariff_type:early"),
+         InlineKeyboardButton(text="➖ списание", callback_data="tariff_type:late")]
+    ])
+    await message.answer("Выберите тип тарифа:", reply_markup=keyboard)
+    await state.set_state(ManageTariffsFSM.waiting_for_tariff_type)
+
+@router.callback_query(F.data.startswith("tariff_type:"), StateFilter(ManageTariffsFSM.waiting_for_tariff_type))
+async def handle_tariff_type_callback(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик для получения типа тарифа."""
+    tariff_type = callback_query.data.split(":")[1]
+    await state.update_data(tariff_type=tariff_type)
+    await callback_query.message.answer("Введите временной порог (в минутах):")
+    await state.set_state(ManageTariffsFSM.waiting_for_time_threshold)
+
+@router.message(F.text, StateFilter(ManageTariffsFSM.waiting_for_time_threshold))
+async def handle_time_threshold(message: Message, state: FSMContext):
+    """Обработчик для получения временного порога."""
+    await state.update_data(time_threshold=message.text)
+    await message.answer("Введите количество баллов:")
+    await state.set_state(ManageTariffsFSM.waiting_for_score)
+
+@router.message(F.text, StateFilter(ManageTariffsFSM.waiting_for_score))
+async def handle_score(message: Message, state: FSMContext, db: Database):
+    """Обработчик для получения количества баллов."""
+    data = await state.get_data()
+    tariff_name = data.get("tariff_name")
+    time_threshold = data.get("time_threshold")
+    score = message.text
+    tariff_type = data.get("tariff_type")
+    try:
+        time_threshold = int(time_threshold) * 60
+        score = int(score)
+        db.create_tariff(f"{tariff_name}_{tariff_type}", time_threshold, score)
+        await message.answer("Тариф успешно создан!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_tariffs_menu")]]))
+    except ValueError:
+        await message.answer("Неверный формат данных. Пожалуйста, введите целые числа для времени и баллов.")
+    await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data == "update_tariff", StateFilter(ManageTariffsFSM.menu))
+async def update_tariff_handler(callback_query: CallbackQuery, state: FSMContext, db: Database):
+    """Обработчик для изменения тарифа."""
+    tariffs = db.get_all_tariffs()
+    if tariffs:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=tariff['tariff_name'], callback_data=f"select_tariff:{tariff['tariff_name']}")]
+            for tariff in tariffs
+        ])
+        await callback_query.message.answer("Выберите тариф для изменения:", reply_markup=keyboard)
+        await state.set_state(ManageTariffsFSM.waiting_for_tariff_to_update)
+    else:
+        await callback_query.message.answer("Тарифы не найдены.")
+        await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data.startswith("select_tariff:"), StateFilter(ManageTariffsFSM.waiting_for_tariff_to_update))
+async def handle_select_tariff(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик для выбора тарифа."""
+    tariff_name = callback_query.data.split(":")[1]
+    await state.update_data(tariff_name=tariff_name)
+    await callback_query.message.answer("Введите новый временной порог (в минутах):")
+    await state.set_state(ManageTariffsFSM.waiting_for_new_time_threshold)
+
+@router.message(F.text, StateFilter(ManageTariffsFSM.waiting_for_new_time_threshold))
+async def handle_new_time_threshold(message: Message, state: FSMContext):
+    """Обработчик для получения нового временного порога."""
+    await state.update_data(new_time_threshold=message.text)
+    await message.answer("Введите новое количество баллов:")
+    await state.set_state(ManageTariffsFSM.waiting_for_new_score)
+
+@router.message(F.text, StateFilter(ManageTariffsFSM.waiting_for_new_score))
+async def handle_new_score(message: Message, state: FSMContext, db: Database):
+    """Обработчик для получения нового количества баллов."""
+    data = await state.get_data()
+    tariff_name = data.get("tariff_name")
+    new_time_threshold = data.get("new_time_threshold")
+    new_score = message.text
+    try:
+        new_time_threshold = int(new_time_threshold) * 60
+        new_score = int(new_score)
+        db.update_tariff(tariff_name, new_time_threshold, new_score)
+        await message.answer("Тариф успешно обновлен!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_tariffs_menu")]]))
+    except ValueError:
+        await message.answer("Неверный формат данных. Пожалуйста, введите целые числа для времени и баллов.")
+    await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data == "delete_tariff", StateFilter(ManageTariffsFSM.menu))
+async def delete_tariff_handler(callback_query: CallbackQuery, state: FSMContext, db: Database):
+    """Обработчик для выбора тарифа для удаления."""
+    tariffs = db.get_all_tariffs()
+    if tariffs:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=tariff['tariff_name'], callback_data=f"select_tariff_to_delete:{tariff['tariff_name']}")]
+            for tariff in tariffs
+        ])
+        await callback_query.message.answer("Выберите тариф для удаления:", reply_markup=keyboard)
+        await state.set_state(ManageTariffsFSM.waiting_for_tariff_to_delete)
+    else:
+        await callback_query.message.answer("Тарифы не найдены.")
+        await state.set_state(ManageTariffsFSM.menu)
+
+@router.callback_query(F.data.startswith("select_tariff_to_delete:"), StateFilter(ManageTariffsFSM.waiting_for_tariff_to_delete))
+async def handle_select_tariff_to_delete(callback_query: CallbackQuery, state: FSMContext, db: Database):
+    """Обработчик для удаления тарифа."""
+    tariff_name = callback_query.data.split(":")[1]
+    try:
+        db.delete_tariff(tariff_name)
+        await callback_query.message.answer(f"Тариф '{tariff_name}' успешно удален.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_tariffs_menu")]]))
+    except Exception as e:
+        await callback_query.message.answer(f"Ошибка при удалении тарифа: {e}")
+    await state.set_state(ManageTariffsFSM.menu)

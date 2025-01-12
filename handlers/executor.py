@@ -1,7 +1,9 @@
 # handlers/executor.py
 import datetime
 import os
+import time
 from aiogram import Bot, Router, F, types
+import bot
 from database import Database
 from keyboards.inline import task_admin_redeadline_keyboard, task_executor_keyboard, task_executor_keyboarda
 from aiogram.types import CallbackQuery
@@ -12,7 +14,7 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from utils import send_channel_message
 from dotenv import load_dotenv
 
-
+message_ids = []
 router = Router()
 load_dotenv()
 CHANNEL_ID = os.getenv("CHANNEL_ID")
@@ -44,9 +46,12 @@ async def request_redeadline_handler(callback_query: CallbackQuery, state: FSMCo
     )
     await state.set_state(ChangeDeadlineExecFSM.waiting_for_new_deadline)
 
+    
+
 @router.message(F.text, StateFilter(ChangeDeadlineExecFSM.waiting_for_new_deadline))
 async def handle_new_deadline_executor(message: Message, state: FSMContext):
     new_deadline = message.text
+
     try:
         datetime.datetime.strptime(new_deadline, "%d-%m-%Y %H:%M")
         await state.update_data(new_deadline=new_deadline)
@@ -63,6 +68,21 @@ async def handle_reason_executor(message: Message, state: FSMContext, db: Databa
     new_deadline = data.get("new_deadline")
     task = db.get_task_by_id(task_id)
     if task_id and new_deadline:
+
+        message_ids.append(message.message_id)
+
+        # Ограничиваем длину списка (например, до 5 последних сообщений)
+        if len(message_ids) > 5:
+            message_ids.pop(0)
+
+        # Удаляем последние 4 сообщения
+        for _ in range(4):
+            if message_ids:
+                message_id = message_ids.pop()
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=message_id)
+                except Exception as e:
+                    print(f"Ошибка при удалении сообщения: {e}")
         
         # Отправка уведомления админу
         admin_users = db.get_all_users()
@@ -70,6 +90,14 @@ async def handle_reason_executor(message: Message, state: FSMContext, db: Databa
             for user in admin_users:
                 if user['role'] == 'Админ':
                     try:
+                        # Удаляем последние 3 сообщения
+                        for _ in range(3):
+                            if message_ids:
+                                message_id = message_ids.pop()
+                                try:
+                                    await bot.delete_message(chat_id=message.chat.id, message_id=message_id)
+                                except Exception as e:
+                                    print(f"Ошибка при удалении сообщения: {e}")
                         await bot.send_message(
                             chat_id=user['user_id'],
                             text=(
@@ -389,6 +417,28 @@ async def handle_report_text(message: Message, state: FSMContext, db: Database, 
         details=f"Отчет: {report_text}"
     )
 
+    # Логика начисления/снятия баллов
+    current_time = int(time.time())
+    time_diff = task['deadline'] - current_time
+    user_id = str(message.from_user.id)
+    
+    if time_diff > 0:  # Задача выполнена раньше срока
+        tariffs = db.get_all_tariffs()
+        for tariff in tariffs:
+            if tariff['tariff_name'].endswith("_early") and time_diff >= tariff['time_threshold']:
+                score = tariff['score']
+                db.add_user_score(user_id, score)
+                await message.answer(f"Задача выполнена раньше срока. Начислено {score} баллов.")
+                break
+    elif time_diff < 0:  # Задача просрочена
+        time_diff = abs(time_diff)
+        tariffs = db.get_all_tariffs()
+        for tariff in tariffs:
+            if tariff['tariff_name'].endswith("_late") and time_diff <= tariff['time_threshold']:
+                score = tariff['score']
+                db.remove_user_score(user_id, abs(score))
+                await message.answer(f"Задача просрочена. Списано {abs(score)} баллов.")
+                break
 
     
     # Завершаем FSM
@@ -432,6 +482,8 @@ async def executor_statistics(message: types.Message, db: Database):
     is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
     done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
     completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
+    user_score = db.get_user_score(user_id)
+
 
     response = (
         " <b>Ваша статистика:</b>\n\n"
@@ -441,6 +493,7 @@ async def executor_statistics(message: types.Message, db: Database):
         f"🛠️ В работе: {is_on_work_user_tasks}\n"
         f"✅ Выполнены: {done_user_tasks}\n"
         f"🎉 Завершены: {completed_user_tasks}\n"
+        f"<b>Баллы:</b> {user_score}\n"
     )
 
     await message.answer(response, parse_mode="HTML")

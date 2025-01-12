@@ -9,7 +9,10 @@ admin_menu_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="Просмотр задач"),
             KeyboardButton(text="Статистика")
         ],
-        [KeyboardButton(text="Управление пользователями")],  # Новая кнопка
+        [
+            KeyboardButton(text="Пользователи"),
+            KeyboardButton(text="Тарифы")
+        ],  # Новая кнопка
         # [KeyboardButton(text="Статистика пользователей")]
     ],
     resize_keyboard=True
