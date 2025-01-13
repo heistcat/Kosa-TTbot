@@ -37,70 +37,69 @@ async def check_deadlines(bot: Bot, db: Database):
                 print(f"{deadline} - {now} = {time_left} for task: {task['title']}")
 
                 if time_left <= timedelta(days=1) and time_left > timedelta(hours=24-2):
-                    print("1 day")
-                    # Уведомление за 1 день
+                    notification_type = "1day"
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
                             user_id = int(user_id)
-                            print(user_id)
-                            try:
-                                await bot.send_message(
-                                    chat_id=user_id,
-                                    text=(
-                                        f"⏰ <b>Напоминание:</b>\n"
-                                        f"У вас остался <b>1 день</b> до дедлайна задачи:\n"
-                                        f"🔖 <b>Название:</b> {task['title']}\n"
-                                    ),
-                                    parse_mode="HTML"
-                                )
-                                print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 1 день")
+                            if not db.check_task_notification(task['id'], user_id, task['deadline'], notification_type):
+                                try:
+                                    await bot.send_message(
+                                        chat_id=user_id,
+                                        text=(
+                                            f"⏰ <b>Напоминание:</b>\n"
+                                            f"У вас остался <b>1 день</b> до дедлайна задачи:\n"
+                                            f"🔖 <b>Название:</b> {task['title']}\n"
+                                        ),
+                                        parse_mode="HTML"
+                                    )
+                                    print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 1 день")
+                                    db.add_task_notification(task['id'], user_id, task['deadline'], notification_type)
 
-                            except Exception as e:
-                                print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+                                except Exception as e:
+                                    print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                 elif time_left <= timedelta(hours=2) and time_left > timedelta(minutes=30):
-                    print("2 hours")
-                     # Уведомление за 2 часа
+                    notification_type = "2hours"
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
                             user_id = int(user_id)
-                            print(user_id)
-                            try:
-                                await bot.send_message(
-                                    chat_id=user_id,
-                                    text=(
-                                        f"⏰ <b>Напоминание:</b>\n"
-                                        f"У вас осталось <b>2 часа</b> до дедлайна задачи:\n"
-                                        f"🔖 <b>Название:</b> {task['title']}\n"
-                                    ),
-                                    parse_mode="HTML"
-                                )
-                                print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 2 часа")
+                            if not db.check_task_notification(task['id'], user_id, task['deadline'], notification_type):
+                                try:
+                                    await bot.send_message(
+                                        chat_id=user_id,
+                                        text=(
+                                            f"⏰ <b>Напоминание:</b>\n"
+                                            f"У вас осталось <b>2 часа</b> до дедлайна задачи:\n"
+                                            f"🔖 <b>Название:</b> {task['title']}\n"
+                                        ),
+                                        parse_mode="HTML"
+                                    )
+                                    print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 2 часа")
+                                    db.add_task_notification(task['id'], user_id, task['deadline'], notification_type)
 
-                            except Exception as e:
-                                print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+                                except Exception as e:
+                                    print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                 elif time_left <= timedelta(minutes=30) and time_left > timedelta(minutes=0):
-                    print("30")
-                    # Уведомление за 30 минут
+                    notification_type = "30min"
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
                             user_id = int(user_id)
-                            print(user_id)
-                            try:
-                                await bot.send_message(
-                                    chat_id=user_id,
-                                    text=(
-                                        f"⏰ <b>Напоминание:</b>\n"
-                                        f"У вас осталось <b>30 минут</b> до дедлайна задачи:\n"
-                                        f"🔖 <b>Название:</b> {task['title']}\n"
-                                    ),
-                                    parse_mode="HTML"
-                                )
-                                print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 30 минут")
-                            except Exception as e:
-                                print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+                            if not db.check_task_notification(task['id'], user_id, task['deadline'], notification_type):
+                                try:
+                                    await bot.send_message(
+                                        chat_id=user_id,
+                                        text=(
+                                            f"⏰ <b>Напоминание:</b>\n"
+                                            f"У вас осталось <b>30 минут</b> до дедлайна задачи:\n"
+                                            f"🔖 <b>Название:</b> {task['title']}\n"
+                                        ),
+                                        parse_mode="HTML"
+                                    )
+                                    print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 30 минут")
+                                    db.add_task_notification(task['id'], user_id, task['deadline'], notification_type)
+                                except Exception as e:
+                                    print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
         await asyncio.sleep(90)  # Проверяем каждую минуту
         print("Проверка дедлайнов...")
-
 
 async def reset_scores_yearly(bot: Bot, db: Database):
     """Обнуляет баллы всех пользователей в начале каждого года."""

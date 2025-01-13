@@ -77,6 +77,16 @@ class Database:
             score INTEGER
         )
         """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS task_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            user_id TEXT,
+            deadline INTEGER,
+            notification_type TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks(id)
+        )
+        """)
         self.connection.commit()
 
 
@@ -405,4 +415,26 @@ class Database:
     def delete_tariff(self, tariff_name):
         """Удаляет тариф."""
         self.cursor.execute("DELETE FROM score_tariffs WHERE tariff_name = ?", (tariff_name,))
+        self.connection.commit()
+
+    def add_task_notification(self, task_id, user_id, deadline, notification_type):
+        """Добавляет запись об отправленном уведомлении."""
+        self.cursor.execute("""
+            INSERT INTO task_notifications (task_id, user_id, deadline, notification_type)
+            VALUES (?, ?, ?, ?)
+        """, (task_id, user_id, deadline, notification_type))
+        self.connection.commit()
+
+    def check_task_notification(self, task_id, user_id, deadline, notification_type):
+        """Проверяет, было ли уже отправлено уведомление для данного дедлайна."""
+        query = """
+            SELECT id FROM task_notifications
+            WHERE task_id = ? AND user_id = ? AND deadline = ? AND notification_type = ?
+        """
+        result = self.connection.execute(query, (task_id, user_id, deadline, notification_type)).fetchone()
+        return bool(result)
+
+    def delete_task_notifications(self, task_id):
+        """Удаляет все уведомления для задачи."""
+        self.cursor.execute("DELETE FROM task_notifications WHERE task_id = ?", (task_id,))
         self.connection.commit()

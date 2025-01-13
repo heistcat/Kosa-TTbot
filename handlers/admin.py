@@ -87,6 +87,9 @@ async def handle_new_deadline_admin(message: Message, state: FSMContext, db: Dat
                 details=f"Новый дедлайн: {new_deadline}"
             )
 
+            # Удаляем старые уведомления
+            db.delete_task_notifications(task_id)
+
             await message.answer("Дедлайн задачи успешно изменен!")
         else:
             await message.answer("Произошла ошибка при изменении дедлайна.")
