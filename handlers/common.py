@@ -122,7 +122,7 @@ async def su_give_handle_phone_number(message: Message, db: Database, state: Aut
         # bot.send_message(user, "You are already a super user", reply_markup=su_menu_keyboard)
         await message.answer("ROOT: user is SU already!", reply_markup=su_menu_keyboard)
     else :
-        db.register_su(user_id=user)
+        db.register_su(user_id=phone_number)
         # bot.send_message(user, "ROOT: Welcome to the club, buddy!", reply_markup=su_menu_keyboard)
         await message.answer(f"ROOT: user is SU now!\n\n",
                         reply_markup=su_menu_keyboard)
@@ -136,11 +136,7 @@ async def su_all_handler(message: Message, db: Database):
     if sus:
         for su in sus:
             user = db.get_user_by_id(user_id=su['user_id'])
-            is_user = True if user else False
-            if not is_user:
-                await message.answer(f"ROOT: {su['user_id']} - not in users")
-            else:
-                await message.answer(f"ROOT: {su['user_id']} - {user['username']} ({user['name']})")
+            await message.answer(f"ROOT: {su['user_id']} - {user['username']} ({user['name']})")
     else:
         await message.answer("ROOT: No super users found.")
 
@@ -161,7 +157,7 @@ async def su_remove_handle_phone_number(message: Message, db: Database, state: A
         if user == su:
             db.remove_su(user_id=user)
             await message.answer("ROOT: user is not SU anymore!", reply_markup=admin_menu_keyboard if user['role'] == 'Админ' else executor_menu_keyboard)
-        else :
+        else:
             await message.answer("ROOT: user is not SU already!", reply_markup=admin_menu_keyboard if user['role'] == 'Админ' else executor_menu_keyboard)
         return
     await state.clear()
