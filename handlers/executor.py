@@ -149,7 +149,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
             else:
                 assigned_users = "Не назначено"
 
-            creator = db.get_user_by_id(task['created_by'])
+            creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else 'Admin'
             deadline = datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
 
             task_text = (
@@ -158,7 +158,7 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 f" <b>Название:</b> {task['title']}\n"
                 f" <b>Стоимость задачи:</b> {task['description']}\n"
                 f" <b>Дедлайн:</b> {deadline}\n"
-                f"👤 <b>Создатель задачи:</b> {creator['username'] if creator['username'] != None else 'Admin'}\n"
+                f"👤 <b>Создатель задачи:</b> {creator}\n"
                 f" <b>Исполнители:</b> {assigned_users}\n"
                 f" <b>Статус:</b> {task['status']}\n\n"
                 
@@ -225,7 +225,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         await callback_query.message.edit_text("Задача не найдена.")
         return
     
-    creator = db.get_user_by_id(task['created_by'])
+    creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else 'Admin'
     deadline = datetime.datetime.fromtimestamp(task['deadline']).strftime("%d-%m-%Y %H:%M")
 
     task_text = (
@@ -234,7 +234,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         f"🏷️ <b>Название:</b> {task['title']}\n"
         f"💰 <b>Стоимость задачи:</b> {task['description']}\n"
         f"⏰ <b>Дедлайн:</b> {deadline}\n"
-        f"👤 <b>Создатель задачи:</b> {creator['username'] if creator['username'] != None else 'Admin'}\n"
+        f"👤 <b>Создатель задачи:</b> {creator}\n"
         f"📊 <b>Статус:</b> {task['status']}\n\n"
     )
 
