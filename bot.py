@@ -29,12 +29,15 @@ async def check_deadlines(bot: Bot, db: Database):
                 deadline = datetime.fromtimestamp(task['deadline'])
                 now = datetime.now()
                 time_left = deadline - now
+                print(f"{deadline} - {now} = {time_left} for task: {task['title']}")
 
                 if time_left <= timedelta(days=1) and time_left > timedelta(hours=24-2):
+                    print("1 day")
                     # Уведомление за 1 день
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
                             user_id = int(user_id)
+                            print(user_id)
                             try:
                                 await bot.send_message(
                                     chat_id=user_id,
@@ -50,10 +53,12 @@ async def check_deadlines(bot: Bot, db: Database):
                             except Exception as e:
                                 print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                 elif time_left <= timedelta(hours=2) and time_left > timedelta(minutes=30):
+                    print("2 hours")
                      # Уведомление за 2 часа
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
                             user_id = int(user_id)
+                            print(user_id)
                             try:
                                 await bot.send_message(
                                     chat_id=user_id,
@@ -69,10 +74,12 @@ async def check_deadlines(bot: Bot, db: Database):
                             except Exception as e:
                                 print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                 elif time_left <= timedelta(minutes=30) and time_left > timedelta(minutes=0):
+                    print("30")
                     # Уведомление за 30 минут
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
                             user_id = int(user_id)
+                            print(user_id)
                             try:
                                 await bot.send_message(
                                     chat_id=user_id,
