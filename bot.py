@@ -45,6 +45,8 @@ async def check_deadlines(bot: Bot, db: Database):
                                     ),
                                     parse_mode="HTML"
                                 )
+                                print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 1 день")
+
                             except Exception as e:
                                 print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                 elif time_left <= timedelta(hours=2) and time_left > timedelta(minutes=30):
@@ -62,6 +64,8 @@ async def check_deadlines(bot: Bot, db: Database):
                                     ),
                                     parse_mode="HTML"
                                 )
+                                print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 2 часа")
+
                             except Exception as e:
                                 print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                 elif time_left <= timedelta(minutes=30) and time_left > timedelta(minutes=0):
@@ -79,9 +83,11 @@ async def check_deadlines(bot: Bot, db: Database):
                                     ),
                                     parse_mode="HTML"
                                 )
+                                print(f"Отправлено уведомление пользователю {user_id} по задаче {task['title']} за 30 минут")
                             except Exception as e:
                                 print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
-        await asyncio.sleep(1800)  # Проверяем каждую минуту
+        await asyncio.sleep(90)  # Проверяем каждую минуту
+        print("Проверка дедлайнов...")
 
 
 async def reset_scores_yearly(bot: Bot, db: Database):
