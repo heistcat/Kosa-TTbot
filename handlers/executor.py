@@ -234,7 +234,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
         f"🏷️ <b>Название:</b> {task['title']}\n"
         f"💰 <b>Стоимость задачи:</b> {task['description']}\n"
         f"⏰ <b>Дедлайн:</b> {deadline}\n"
-        f"👤 <b>Создатель задачи:</b> {creator['username']}\n"
+        f"👤 <b>Создатель задачи:</b> {creator['username'] or 'Admin'}\n"
         f"📊 <b>Статус:</b> {task['status']}\n\n"
     )
 
