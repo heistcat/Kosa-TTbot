@@ -1,4 +1,5 @@
-from aiogram import Router, F
+import os
+from aiogram import Bot, Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -8,6 +9,7 @@ from keyboards.reply import admin_menu_keyboard, executor_menu_keyboard, su_menu
 from database import Database
 
 router = Router()
+API_TOKEN_PROD = os.getenv("API_TOKEN_PROD")
 
 # Машина состояний для авторизации
 class AuthFSM(StatesGroup):
@@ -161,3 +163,13 @@ async def su_remove_handle_phone_number(message: Message, db: Database, state: A
             await message.answer("ROOT: user is not SU already!", reply_markup=admin_menu_keyboard if user['role'] == 'Админ' else executor_menu_keyboard)
         return
     await state.clear()
+
+bott = Bot(token=API_TOKEN_PROD)
+
+@router.message(F.text.startswith("запросить фичи у разраба"))
+async def request_feature(message: Message):
+    contact = message.contact.phone_number
+    user_id = message.from_user.id
+    username = message.from_user.username
+
+    bott.send_message(f"{contact} / {username} / {user_id} wants get new feature")
