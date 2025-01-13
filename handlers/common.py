@@ -115,7 +115,7 @@ async def su_give_handler(message: Message, state: FSMContext):
 @router.message(F.text)
 async def su_give_handle_phone_number(message: Message, db: Database, state: AuthFSM):
     phone_number = message.text
-    user = db.get_user_by_phone_number(user_id=phone_number)['user_id']
+    user = db.get_user_by_phone_number(phone_number=phone_number)['user_id']
 
     su = db.get_su_by_id(user_id=user)
     if user == su:
@@ -151,7 +151,7 @@ async def su_remove_handler(message: Message, state: FSMContext):
 async def su_remove_handle_phone_number(message: Message, db: Database, state: AuthFSM):
     phone_number = message.text
 
-    user = db.get_user_by_phone_number(user_id=phone_number)['user_id']
+    user = db.get_user_by_phone_number(phone_number=phone_number)['user_id']
     su = db.get_su_by_id(user_id=user)
     if user:
         if user == su:
