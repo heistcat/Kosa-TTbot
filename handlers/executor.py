@@ -14,6 +14,9 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from utils import send_channel_message
 from dotenv import load_dotenv
 
+os.environ['TZ'] = 'Etc/GMT-5'
+time.tzset() # Обновляем информацию о таймзоне
+
 router = Router()
 load_dotenv()
 CHANNEL_ID = os.getenv("CHANNEL_ID")

@@ -2,6 +2,7 @@
 import asyncio
 from datetime import datetime, timedelta
 import os
+import time
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from database import Database
@@ -9,7 +10,8 @@ from handlers import common, admin, executor
 from dotenv import load_dotenv
 
 from utils import send_channel_message
-import pytz
+os.environ['TZ'] = 'Etc/GMT-5'
+time.tzset() # Обновляем информацию о таймзоне
 
 
 
@@ -20,7 +22,6 @@ API_TOKEN_PROD = os.getenv("API_TOKEN_PROD")
 DB_PATH = "database/database.db"
 instance = Bot(token=API_TOKEN_PROD)  # Create an instance of the Bot class
 CHANNEL_ID = os.getenv("CHANNEL_ID")
-TIMEZONE = pytz.timezone('Etc/GMT-5') # Устанавливаем таймзону UTC+5
 
 
 
@@ -31,7 +32,7 @@ async def check_deadlines(bot: Bot, db: Database):
         for task in tasks:
             if task['status'] == 'pending' or task['status'] == 'is_on_work':
                 deadline = datetime.fromtimestamp(task['deadline'])
-                now = datetime.now(TIMEZONE)
+                now = datetime.now()
                 time_left = deadline - now
                 print(f"{deadline} - {now} = {time_left} for task: {task['title']}")
 
@@ -104,7 +105,7 @@ async def check_deadlines(bot: Bot, db: Database):
 async def reset_scores_yearly(bot: Bot, db: Database):
     """Обнуляет баллы всех пользователей в начале каждого года."""
     while True:
-        now = datetime.now(TIMEZONE)
+        now = datetime.now()
         if now.month <= 2 and now.day == 1 and now.hour == 0 and now.minute == 0:
             db.reset_all_scores()
             print("Баллы всех пользователей обнулены!")

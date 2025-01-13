@@ -1,6 +1,9 @@
+import os
 import sqlite3
 import time
 from datetime import datetime
+os.environ['TZ'] = 'Etc/GMT-5'
+time.tzset() # Обновляем информацию о таймзоне
 
 class Database:
     def __init__(self, db_path="database/database.db"):

@@ -1,4 +1,5 @@
 # handlers/admin.py
+import os
 import time
 from aiogram import Router, F, Bot, types
 from aiogram.filters import StateFilter
@@ -13,6 +14,9 @@ from handlers.common import send_menu
 from bot import instance as bot, CHANNEL_ID
 from utils import send_channel_message
 from datetime import datetime
+
+os.environ['TZ'] = 'Etc/GMT-5'
+time.tzset() # Обновляем информацию о таймзоне
 
 
 router = Router()

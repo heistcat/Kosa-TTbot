@@ -1,5 +1,5 @@
 from database import Database
-import os
+# import os
 from aiogram import Bot
 from dotenv import load_dotenv
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
