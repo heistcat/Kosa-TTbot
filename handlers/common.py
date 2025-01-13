@@ -106,31 +106,6 @@ async def su_handler(message: Message, db: Database):
                          reply_markup=su_menu_keyboard)
 
 
-@router.message(F.text.startswith("/su give"))
-async def su_give_handler(message: Message, state: FSMContext):
-    await message.answer(
-        "enter the phone number of the user you want to make",
-    )
-    await state.set_state(AuthFSM.waiting_for_phone)
-
-
-@router.message(F.text.startswith("su998"))
-async def su_give_handle_phone_number(message: Message, db: Database, state: AuthFSM):
-    phone_number = message.text
-    user = db.get_user_by_phone_number(phone_number=phone_number)['user_id']
-
-    su = db.get_su_by_id(user_id=user)
-    if user == su:
-        # bot.send_message(user, "You are already a super user", reply_markup=su_menu_keyboard)
-        await message.answer("ROOT: user is SU already!", reply_markup=su_menu_keyboard)
-    else :
-        db.register_su(user_id=phone_number)
-        # bot.send_message(user, "ROOT: Welcome to the club, buddy!", reply_markup=su_menu_keyboard)
-        await message.answer(f"ROOT: user is SU now!\n\n",
-                        reply_markup=su_menu_keyboard)
-        return
-    await state.clear()
-
 @router.message(F.text.startswith("/su all"))
 async def su_all_handler(message: Message, db: Database):
     sus = db.get_all_sus()
@@ -149,7 +124,7 @@ async def su_remove_handler(message: Message, state: FSMContext):
     )
     await state.set_state(AuthFSM.waiting_for_phone)
 
-@router.message(F.text.startswith("re998"))
+@router.message(F.text.startswith("998"))
 async def su_remove_handle_phone_number(message: Message, db: Database, state: AuthFSM):
     phone_number = message.text
 
@@ -164,7 +139,7 @@ async def su_remove_handle_phone_number(message: Message, db: Database, state: A
         return
     await state.clear()
 
-bott = Bot(token=API_TOKEN_PROD)
+bot = Bot(token=API_TOKEN_PROD)
 
 @router.message(F.text.startswith("запросить фичи у разраба"))
 async def request_feature(message: Message):
@@ -172,4 +147,4 @@ async def request_feature(message: Message):
     user_id = message.from_user.id
     username = message.from_user.username
 
-    bott.send_message(f"{contact} / {username} / {user_id} wants get new feature")
+    bot.send_message(f"{contact} / {username} / {user_id} wants get new feature")

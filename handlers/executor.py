@@ -473,10 +473,3 @@ async def executor_statistics(message: types.Message, db: Database):
 
     await message.answer(response, parse_mode="HTML")
 
-@router.message(F.text == "/getsu")
-async def get_su_handler(message: Message, db: Database):
-    su = db.get_su_by_id(user_id=message.from_user.id)
-    if su:
-        await message.answer("ROOT: Welcome back, buddy!", reply_markup=su_menu_keyboard)
-    else:
-        await message.answer(f"ROOT: contact to DEV to get su!")
