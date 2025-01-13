@@ -1,0 +1,10 @@
+services:
+  app:
+    image: heistcat/kosa_process:1.0
+    container_name: kosa_process_container
+    volumes:
+      - bot_db:/app/database/
+    restart: always
+    
+volumes:
+  bot_db:

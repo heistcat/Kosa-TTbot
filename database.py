@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 
 class Database:
-    def __init__(self, db_path="database.db"):
+    def __init__(self, db_path="database/database.db"):
         # Инициализация подключения к базе данных
         self.connection = sqlite3.connect(db_path)
         self.connection.row_factory = sqlite3.Row  # Удобный формат возвращения данных
