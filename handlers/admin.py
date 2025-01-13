@@ -1034,7 +1034,7 @@ async def user_info_handler(callback_query: CallbackQuery, db: Database):
     if user:
         keyboard = role_selection_keyboard(user_id)
         # keyboard.inline_keyboard.append([InlineKeyboardButton(text="Статистика пользователя", callback_data=f"user_stats:{user_id}")])
-        await callback_query.message.edit_text(response, reply_markup=keyboard)
+        await callback_query.message.edit_text(response, parse_mode="HTML", reply_markup=keyboard)
     else:
         await callback_query.message.edit_text("Пользователь не найден.")
 
