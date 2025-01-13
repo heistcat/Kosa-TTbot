@@ -36,7 +36,7 @@ async def check_deadlines(bot: Bot, db: Database):
                 time_left = deadline - now
                 print(f"{deadline} - {now} = {time_left} for task: {task['title']}")
 
-                if time_left <= timedelta(days=1) and time_left > timedelta(hours=24-2):
+                if time_left <= timedelta(hours=24) and time_left > timedelta(hours=2):
                     notification_type = "1day"
                     if task['assigned_to']:
                         for user_id in task['assigned_to'].split(','):
@@ -47,7 +47,7 @@ async def check_deadlines(bot: Bot, db: Database):
                                         chat_id=user_id,
                                         text=(
                                             f"⏰ <b>Напоминание:</b>\n"
-                                            f"У вас остался <b>1 день</b> до дедлайна задачи:\n"
+                                            f"У вас осталось меньше <b>1 дня</b> до дедлайна задачи:\n"
                                             f"🔖 <b>Название:</b> {task['title']}\n"
                                         ),
                                         parse_mode="HTML"
@@ -68,7 +68,7 @@ async def check_deadlines(bot: Bot, db: Database):
                                         chat_id=user_id,
                                         text=(
                                             f"⏰ <b>Напоминание:</b>\n"
-                                            f"У вас осталось <b>2 часа</b> до дедлайна задачи:\n"
+                                            f"У вас осталось меньше <b>2 часов</b> до дедлайна задачи:\n"
                                             f"🔖 <b>Название:</b> {task['title']}\n"
                                         ),
                                         parse_mode="HTML"
@@ -89,7 +89,7 @@ async def check_deadlines(bot: Bot, db: Database):
                                         chat_id=user_id,
                                         text=(
                                             f"⏰ <b>Напоминание:</b>\n"
-                                            f"У вас осталось <b>30 минут</b> до дедлайна задачи:\n"
+                                            f"У вас осталось меньше <b>30 минут</b> до дедлайна задачи:\n"
                                             f"🔖 <b>Название:</b> {task['title']}\n"
                                         ),
                                         parse_mode="HTML"
