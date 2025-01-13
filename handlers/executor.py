@@ -14,7 +14,6 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from utils import send_channel_message
 from dotenv import load_dotenv
 
-message_ids = []
 router = Router()
 load_dotenv()
 CHANNEL_ID = os.getenv("CHANNEL_ID")
@@ -69,35 +68,12 @@ async def handle_reason_executor(message: Message, state: FSMContext, db: Databa
     task = db.get_task_by_id(task_id)
     if task_id and new_deadline:
 
-        message_ids.append(message.message_id)
-
-        # Ограничиваем длину списка (например, до 5 последних сообщений)
-        if len(message_ids) > 5:
-            message_ids.pop(0)
-
-        # Удаляем последние 4 сообщения
-        for _ in range(4):
-            if message_ids:
-                message_id = message_ids.pop()
-                try:
-                    await bot.delete_message(chat_id=message.chat.id, message_id=message_id)
-                except Exception as e:
-                    print(f"Ошибка при удалении сообщения: {e}")
-        
         # Отправка уведомления админу
         admin_users = db.get_all_users()
         if admin_users:
             for user in admin_users:
                 if user['role'] == 'Админ':
                     try:
-                        # Удаляем последние 3 сообщения
-                        for _ in range(3):
-                            if message_ids:
-                                message_id = message_ids.pop()
-                                try:
-                                    await bot.delete_message(chat_id=message.chat.id, message_id=message_id)
-                                except Exception as e:
-                                    print(f"Ошибка при удалении сообщения: {e}")
                         await bot.send_message(
                             chat_id=user['user_id'],
                             text=(
@@ -268,8 +244,6 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
             formatted_comments += f"<blockquote>{comment}</blockquote>\n"
         task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
 
-    await callback_query.message.delete()
-
     reply_markup = task_executor_keyboard(task_id) if task['status'] == 'pending' else task_executor_keyboarda(task_id)
 
     if task["ref_photo"]:
@@ -323,8 +297,6 @@ async def back_to_my_tasks(callback_query: CallbackQuery, db: Database):
         inline_keyboard=[[button] for button in task_buttons]  # Кнопки задач
     )
 
-    # Удаляем старое сообщение и отправляем список задач
-    await callback_query.message.delete()
     await callback_query.message.answer("📋 Ваши задачи:", reply_markup=keyboard) # Используем edit_text
 
     
@@ -497,4 +469,3 @@ async def executor_statistics(message: types.Message, db: Database):
     )
 
     await message.answer(response, parse_mode="HTML")
-    await message.delete()
