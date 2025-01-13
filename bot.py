@@ -20,6 +20,9 @@ instance = Bot(token=API_TOKEN_PROD)  # Create an instance of the Bot class
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 
+
+
+
 async def check_deadlines(bot: Bot, db: Database):
     """Проверяет дедлайны задач и отправляет уведомления."""
     while True:
