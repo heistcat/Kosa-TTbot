@@ -112,7 +112,7 @@ async def su_give_handler(message: Message, state: FSMContext):
     await state.set_state(AuthFSM.waiting_for_phone)
 
 
-@router.message(F.text.startswith("998"))
+@router.message(F.text.startswith("su998"))
 async def su_give_handle_phone_number(message: Message, db: Database, state: AuthFSM):
     phone_number = message.text
     user = db.get_user_by_phone_number(phone_number=phone_number)['user_id']
@@ -147,7 +147,7 @@ async def su_remove_handler(message: Message, state: FSMContext):
     )
     await state.set_state(AuthFSM.waiting_for_phone)
 
-@router.message(F.text.startswith("998"))
+@router.message(F.text.startswith("re998"))
 async def su_remove_handle_phone_number(message: Message, db: Database, state: AuthFSM):
     phone_number = message.text
 
