@@ -6,6 +6,7 @@ from aiogram import Bot, Router, F, types
 import bot
 from database import Database
 from keyboards.inline import task_admin_redeadline_keyboard, task_executor_keyboard, task_executor_keyboarda
+from keyboards.reply import su_menu_keyboard
 from aiogram.types import CallbackQuery
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -471,3 +472,11 @@ async def executor_statistics(message: types.Message, db: Database):
     )
 
     await message.answer(response, parse_mode="HTML")
+
+@router.message(F.text == "/getsu")
+async def get_su_handler(message: Message, db: Database):
+    su = db.get_su_by_id(user_id=message.from_user.id)
+    if su:
+        await message.answer("ROOT: Welcome back, buddy!", reply_markup=su_menu_keyboard)
+    else:
+        await message.answer(f"ROOT: contact to DEV to get su!")

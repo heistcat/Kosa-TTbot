@@ -99,6 +99,14 @@ class Database:
     def get_su_by_id(self, user_id):
         query = "SELECT * FROM su WHERE user_id = ?"
         return self.connection.execute(query, (user_id,)).fetchone()
+    
+    def get_all_sus(self):
+        query = "SELECT * FROM su"
+        return self.connection.execute(query).fetchall()
+    
+    def remove_su(self, user_id):
+        self.cursor.execute("DELETE FROM su WHERE user_id = ?", (user_id,))
+        self.connection.commit()
 
     # --- Методы для работы с пользователями ---
     def register_user(self, user_id, username, name, phone_number, birth_date, role):
@@ -123,10 +131,10 @@ class Database:
         self.cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         self.connection.commit()
 
-    def get_user(self, user_id):
+    def get_user_by_phone_number(self, phone_number):
         """Получение информации о пользователе по ID."""
-        query = "SELECT * FROM users WHERE user_id = ?"
-        return self.connection.execute(query, (user_id,)).fetchone()
+        query = "SELECT * FROM users WHERE phone_number = ?"
+        return self.connection.execute(query, (phone_number,)).fetchone()
 
     def get_all_users(self):
         """Получение всех пользователей."""

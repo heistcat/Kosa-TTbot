@@ -957,54 +957,6 @@ async def admin_statistics(message: types.Message, db: Database):
         await message.answer(response, parse_mode="HTML")
     else:
         await message.answer(response + "\nПользователи не найдены.", parse_mode="HTML")
-    # await message.delete()
-
-# @router.callback_query(F.data.startswith("user_stats:"))
-# async def user_statistics(callback_query: CallbackQuery, db: Database):
-#     """Отображение статистики по конкретному пользователю."""
-#     user_id = callback_query.data.split(":")[1]
-#     user = db.get_user_by_id(user_id)
-#     if not user:
-#         await callback_query.message.edit_text("Пользователь не найден.")
-#         return
-    
-#     total_user_tasks = db.get_user_tasks_count(user_id)
-#     pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "pending")
-#     is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
-#     done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
-#     completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
-#     user_score = db.get_user_score(user_id)
-
-
-#     response = (
-#         f" <b>Статистика пользователя {user['username']} ({user['name']}):</b>\n\n"
-#         f"<b>Задачи:</b>\n"
-#         f"📊 Всего: {total_user_tasks}\n"
-#         f"⏳ Ожидают выполнения: {pending_user_tasks}\n"
-#         f"🛠️ В работе: {is_on_work_user_tasks}\n"
-#         f"✅ Выполнены: {done_user_tasks}\n"
-#         f"🎉 Завершены: {completed_user_tasks}\n"
-#         f"<b>Баллы:</b> {user_score}\n"
-
-#     )
-#     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text="Назад", callback_data="back_to_stats")] # Кнопка "Назад"
-#     ])
-
-#     await callback_query.message.edit_text(response, parse_mode="HTML", reply_markup=keyboard) # Используем edit_text
-#     await callback_query.answer()
-
-# @router.callback_query(F.data == "back_to_stats")
-# async def back_to_stats(callback_query: types.CallbackQuery, db: Database):
-#     users = db.get_all_users()
-#     if users:
-#         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#             [InlineKeyboardButton(text=f"{user['username']} : {user['role']}", callback_data=f"user_stats:{user['user_id']}")] for user in users
-#         ])
-#         await callback_query.message.edit_text("<b>Список пользователей</b>", parse_mode="HTML" , reply_markup=keyboard)
-#     else:
-#         await callback_query.message.edit_text("Пользователи не найдены.", parse_mode="HTML")
-#     await callback_query.answer()
 
 #Добавим кнопку для просмотра статистики пользователя в user_info_handler
 @router.callback_query(F.data.startswith("user_info:")) # Обработчик для информации о пользователе
@@ -1226,3 +1178,5 @@ async def handle_select_tariff_to_delete(callback_query: CallbackQuery, state: F
     except Exception as e:
         await callback_query.message.answer(f"Ошибка при удалении тарифа: {e}")
     await state.set_state(ManageTariffsFSM.menu)
+
+
