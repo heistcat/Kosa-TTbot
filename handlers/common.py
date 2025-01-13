@@ -127,9 +127,10 @@ async def su_remove_handler(message: Message, state: FSMContext):
 @router.message(F.text.startswith("998"))
 async def su_remove_handle_phone_number(message: Message, db: Database, state: AuthFSM):
     phone_number = message.text
+    print(phone_number)
 
-    user = db.get_user_by_phone_number(phone_number=phone_number)['user_id']
-    su = db.get_su_by_id(user_id=user)
+    user = db.get_user_by_phone_number(phone_number=phone_number)
+    su = db.get_su_by_id(user_id=user['user_id'])
     if user:
         if user == su:
             db.remove_su(user_id=user)
@@ -138,13 +139,3 @@ async def su_remove_handle_phone_number(message: Message, db: Database, state: A
             await message.answer("ROOT: user is not SU already!", reply_markup=admin_menu_keyboard if user['role'] == 'Админ' else executor_menu_keyboard)
         return
     await state.clear()
-
-bot = Bot(token=API_TOKEN_PROD)
-
-@router.message(F.text.startswith("запросить фичи у разраба"))
-async def request_feature(message: Message):
-    contact = message.contact.phone_number
-    user_id = message.from_user.id
-    username = message.from_user.username
-
-    bot.send_message(f"{contact} / {username} / {user_id} wants get new feature")

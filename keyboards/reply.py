@@ -29,7 +29,6 @@ su_menu_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="Пользователи"),
             KeyboardButton(text="Тарифы")
         ],  # Новая кнопка
-        [KeyboardButton(text="запросить фичу у разраба")]
     ],
     resize_keyboard=True
 )
