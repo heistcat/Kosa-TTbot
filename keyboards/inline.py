@@ -183,7 +183,7 @@ def role_selection_keyboard(user_id):
             InlineKeyboardButton(text="👑 Админ", callback_data=f"set_role:Админ:{user_id}"),
             InlineKeyboardButton(text="👨‍🔧 Исполнитель", callback_data=f"set_role:Исполнитель:{user_id}")
         ],
-        [InlineKeyboardButton(text="📊 Статистика пользователя", callback_data=f"user_stats:{user_id}")],
+        # [InlineKeyboardButton(text="📊 Статистика пользователя", callback_data=f"user_stats:{user_id}")],
         [InlineKeyboardButton(text="❌ Удалить пользователя", callback_data=f"delete_user:{user_id}")], # Новая кнопка
         [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_users")] # Кнопка "Назад"
     ]

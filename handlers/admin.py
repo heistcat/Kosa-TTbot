@@ -867,14 +867,14 @@ async def view_users_handler(message: Message, db: Database):
     else:
         await message.answer("Пользователи не найдены.", parse_mode="HTML")
 
-@router.callback_query(F.data.startswith("user_info:"))
-async def user_info_handler(callback_query: CallbackQuery, db: Database):
-    user_id = int(callback_query.data.split(":")[1])
-    user = db.get_user_by_id(user_id)
-    if user:
-        await callback_query.message.edit_text(f"Информация о пользователе:\nUsername: {user['username']}\nRole: {user['role']}", reply_markup=role_selection_keyboard(user_id))
-    else:
-        await callback_query.message.edit_text("Пользователь не найден.")
+# @router.callback_query(F.data.startswith("user_info:"))
+# async def user_info_handler(callback_query: CallbackQuery, db: Database):
+#     user_id = int(callback_query.data.split(":")[1])
+#     user = db.get_user_by_id(user_id)
+#     if user:
+#         await callback_query.message.edit_text(f"Информация о пользователе:\nUsername: {user['username']}\nRole: {user['role']}", reply_markup=role_selection_keyboard(user_id))
+#     else:
+#         await callback_query.message.edit_text("Пользователь не найден.")
 
 
 @router.callback_query(F.data.startswith("set_role:"))
