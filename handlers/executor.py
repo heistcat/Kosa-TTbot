@@ -225,7 +225,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
     task = db.get_task_by_id(task_id)
 
     if not task:
-        await callback_query.message.edit_text("Задача не найдена.")
+        await callback_query.message.edit_text("Задача не найдена.", reply_markup=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_my_tasks")]])
         return
     
     creator = db.get_user_by_id(task['created_by'])['username'] if db.get_user_by_id(task['created_by']) else 'Admin'
@@ -300,7 +300,7 @@ async def back_to_my_tasks(callback_query: CallbackQuery, db: Database):
         inline_keyboard=[[button] for button in task_buttons]  # Кнопки задач
     )
 
-    await callback_query.message.answer("📋 Ваши задачи:", reply_markup=keyboard) # Используем edit_text
+    await callback_query.message.edit_text("📋 Ваши задачи:", reply_markup=keyboard) # Используем edit_text
 
     
 @router.callback_query(F.data.startswith("take_task:"))
@@ -323,8 +323,7 @@ async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bo
     else:
         db.update_task_status(task_id, "is_on_work")
         task = db.get_task_by_id(task_id)
-        await callback_query.message.edit_reply_markup(reply_markup=task_executor_keyboarda(task_id))
-        await callback_query.message.answer("Вы взялись за задачу!")
+        await callback_query.message.edit_text("Вы взялись за задачу!", reply_markup=task_executor_keyboarda(task_id))
     
         # Отправка уведомления в общий канал
         task_text = (
@@ -427,7 +426,7 @@ async def done_tasks(message: Message, db: Database):
     tasks = db.get_tasks_by_user(user_id)
 
     if not tasks:
-        await message.answer("У вас пока нет завершенных задач.")
+        await message.answer("У вас пока нет завершенных задач.", reply_markup=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_my_tasks")]])
         return
     
     # Создаем кнопки для задач
