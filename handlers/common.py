@@ -80,7 +80,7 @@ async def handle_phone_number(message: Message, db: Database, state: AuthFSM):
                          reply_markup=admin_menu_keyboard)
     else:
         db.register_user(user_id=user_id, username=username, name=name, phone_number=phone_number, birth_date=None, role="Исполнитель")
-        await message.answer(f"Добро пожаловать в меню исполнителя!/n/n(если вы админ, то свяжитесь с @ecojonlab чтобы вас назначили админом)/n/nКанал с уведомлениями: https://t.me/+LHSaVXRSxn4wYmIy", 
+        await message.answer(f"Добро пожаловать в меню исполнителя!\n\n(если вы админ, то свяжитесь с @ecojonlab чтобы вас назначили админом)\n\nКанал с уведомлениями: https://t.me/+LHSaVXRSxn4wYmIy", 
                          reply_markup=executor_menu_keyboard)
 
     await state.clear()
