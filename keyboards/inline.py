@@ -58,14 +58,14 @@ def task_admin_keyboard(task_id: int, status):
     Создает клавиатуру для исполнителя задачи.
     """
 
-    if status == 'completed':
+    if status == 'завершено':
     # Создаем список кнопок с callback_data
         buttons = [
             [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_task:{task_id}")],
             [InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")]
         ]
-    elif status == 'is_on_work':
+    elif status == 'в работе':
         buttons = [
             [InlineKeyboardButton(text="✅ Завершить", callback_data=f"complete_task:{task_id}")],
             [InlineKeyboardButton(text="🗓️ Перенести дедлайн", callback_data=f"redeadline:{task_id}")],
@@ -75,7 +75,7 @@ def task_admin_keyboard(task_id: int, status):
                 InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_task_list")
             ]
         ]
-    elif status == 'done':
+    elif status == 'выполнено':
         buttons = [
         [InlineKeyboardButton(text="☑️ Проверить", callback_data=f"checktask:{task_id}")],
         [InlineKeyboardButton(text="📜 История", callback_data=f"view_task_history:{task_id}")],
@@ -85,7 +85,7 @@ def task_admin_keyboard(task_id: int, status):
         ]
         # [InlineKeyboardButton(text="Удалить задачу", callback_data=f"delete_task:{task_id}")]
         ]
-    elif status == 'pending':
+    elif status == 'новая':
         buttons = [
             [InlineKeyboardButton(text="📲 Взяться за задачу", callback_data=f"take_task:{task_id}")],
             [InlineKeyboardButton(text="🔄 Переназначить", callback_data=f"reassign_task:{task_id}")],

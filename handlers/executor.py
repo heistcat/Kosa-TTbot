@@ -178,13 +178,13 @@ async def process_comment(message: Message, state: FSMContext, db: Database):
                 await message.answer_photo(
                     photo=message.photo[-1].file_id,
                     caption=task_text,
-                    reply_markup=task_executor_keyboarda(task_id) if task['status'] == 'done' else task_executor_keyboard(task_id),
+                    reply_markup=task_executor_keyboarda(task_id) if task['status'] == 'выполнено' else task_executor_keyboard(task_id),
                     parse_mode="HTML"
                 )
             else:
                 await message.answer(
                     task_text,
-                    reply_markup=task_executor_keyboarda(task_id) if task['status'] == 'done' else task_executor_keyboard(task_id),
+                    reply_markup=task_executor_keyboarda(task_id) if task['status'] == 'выполнено' else task_executor_keyboard(task_id),
                     parse_mode="HTML"
                 )
     else:
@@ -210,7 +210,7 @@ async def my_tasks_handler(message: Message, db: Database):
             text=f"{task['title'][:25]}...",  # Укороченное название задачи
             callback_data=f"view_my_task:{task['id']}"
         )
-        for task in tasks if not task['status'] == 'completed' and not task['status'] == 'done'
+        for task in tasks if not task['status'] == 'завершено' and not task['status'] == 'выполнено'
     ]
 
     # Формируем клавиатуру
@@ -248,7 +248,7 @@ async def show_task_details(callback_query: CallbackQuery, db: Database, task_id
             formatted_comments += f"<blockquote>{comment}</blockquote>\n"
         task_text += f"<b>Комментарии:</b>\n{formatted_comments}"
 
-    reply_markup = task_executor_keyboard(task_id) if task['status'] == 'pending' else task_executor_keyboarda(task_id)
+    reply_markup = task_executor_keyboard(task_id) if task['status'] == 'новая' else task_executor_keyboarda(task_id)
 
     if task["ref_photo"]:
         await callback_query.message.answer_photo(
@@ -293,7 +293,7 @@ async def back_to_my_tasks(callback_query: CallbackQuery, db: Database):
             text=f"{task['title'][:25]}...",  # Укороченное название задачи
             callback_data=f"view_my_task:{task['id']}"
         )
-        for task in tasks if not task['status'] == 'completed' and not task['status'] == 'done'
+        for task in tasks if not task['status'] == 'завершено' and not task['status'] == 'выполнено'
     ]
 
     # Формируем клавиатуру
@@ -311,8 +311,8 @@ async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bo
 
     tasks = db.get_tasks_by_user(user_id)
     # Используем any и более явные условия
-    is_working = any(task["status"] == "is_on_work" for task in tasks)
-    is_completed = any(task["status"] in ("done", "completed") for task in tasks)
+    is_working = any(task["status"] == "в работе" for task in tasks)
+    is_completed = any(task["status"] in ("выполнено", "завершено") for task in tasks)
 
     if is_working:
         await callback_query.message.answer(
@@ -322,7 +322,7 @@ async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bo
     elif is_completed:
         return  # Ничего не делаем, если задача уже завершена
     else:
-        db.update_task_status(task_id, "is_on_work")
+        db.update_task_status(task_id, "в работе")
         task = db.get_task_by_id(task_id)
         await callback_query.message.edit_text("Вы взялись за задачу!", reply_markup=task_executor_keyboarda(task_id))
     
@@ -436,7 +436,7 @@ async def done_tasks(message: Message, db: Database):
             text=f"{task['title'][:25]}...",  # Укороченное название задачи
             callback_data=f"view_my_done_task:{task['id']}"
         )
-        for task in tasks if task['status'] == 'done' or task['status'] == 'completed'
+        for task in tasks if task['status'] == 'выполнено' or task['status'] == 'завершено'
     ]
 
     # Формируем клавиатуру
@@ -453,10 +453,10 @@ async def executor_statistics(message: types.Message, db: Database):
     user_id = message.from_user.id
 
     total_user_tasks = db.get_user_tasks_count(user_id)
-    pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "pending")
-    is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
-    done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
-    completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
+    pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "новая")
+    is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "в работе")
+    done_user_tasks = db.get_user_tasks_count_by_status(user_id, "выполнено")
+    completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "завершено")
     user_score = db.get_user_score(user_id)
 
 

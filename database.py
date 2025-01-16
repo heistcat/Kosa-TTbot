@@ -36,7 +36,7 @@ class Database:
             ref_photo TEXT,
             assigned_to TEXT,
             location TEXT,
-            status TEXT DEFAULT 'pending',
+            status TEXT DEFAULT 'новая',
             report_text TEXT DEFAULT '_',
             report_photo TEXT DEFAULT '_',
             comments TEXT DEFAULT '_',
@@ -212,7 +212,7 @@ class Database:
     def update_task_report(self, task_id, report_text, report_photo):
         """Добавление отчета к задаче."""
         self.connection.execute("""
-        UPDATE tasks SET report_text = ?, report_photo = ?, status = 'done' WHERE id = ?
+        UPDATE tasks SET report_text = ?, report_photo = ?, status = 'выполнено' WHERE id = ?
         """, (report_text, report_photo, task_id))
         self.connection.commit()
 
@@ -223,20 +223,6 @@ class Database:
         """
         return self.connection.execute(query).fetchall()
 
-    # --- Методы для работы со статистикой ---
-    def increment_task_done(self, user_id):
-        """Увеличить счетчик выполненных задач."""
-        self.connection.execute("""
-        UPDATE statistics SET tasks_done = tasks_done + 1 WHERE user_id = ?
-        """, (user_id,))
-        self.connection.commit()
-
-    def increment_task_overdue(self, user_id):
-        """Увеличить счетчик просроченных задач."""
-        self.connection.execute("""
-        UPDATE statistics SET tasks_overdue = tasks_overdue + 1 WHERE user_id = ?
-        """, (user_id,))
-        self.connection.commit()
 
     def get_admin_statistics(self, user_id):
         """Получить статистику по пользователю."""
@@ -363,6 +349,27 @@ class Database:
         if result:
             return result['score']
         return 0
+    
+    def get_all_done_tasks(self, status):
+        """Получение всех задач с определенным статусом."""
+        query = """
+            SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
+            FROM tasks
+            WHERE status = 'done'
+            ORDER BY deadline ASC
+        """
+        return self.connection.execute(query, (status,)).fetchall()
+    
+    def get_all_completed_tasks(self, status):
+        """Получение всех задач с определенным статусом."""
+        query = """
+            SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
+            FROM tasks
+            WHERE status = 'completed'
+            ORDER BY deadline ASC
+        """
+        return self.connection.execute(query, (status,)).fetchall()
+        
 
     def add_user_score(self, user_id, score):
         """Начисляет баллы пользователю."""

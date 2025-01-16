@@ -241,12 +241,12 @@ async def take_task_handler(callback_query: CallbackQuery, db: Database, bot: Bo
     task_id = callback_query.data.split(":")[1]
 
     tasks = db.get_tasks_by_user(user_id)
-    is_working = any(task["status"] == "is_on_work" for task in tasks)
+    is_working = any(task["status"] == "в работе" for task in tasks)
 
     if is_working:
         await callback_query.answer("Вы уже работаете над задачей, завершите её, чтобы перейти к следующей!", show_alert=True)
     else:
-        db.update_task_status(task_id, "is_on_work")
+        db.update_task_status(task_id, "в работе")
         task = db.get_task_by_id(task_id)
         task_status = task["status"]
         await callback_query.message.edit_reply_markup(reply_markup=task_admin_keyboard(task_id, task_status))
@@ -561,13 +561,13 @@ def create_task_list_keyboard(tasks):
             text=f"{task['title'][:25]}...",  # Укороченное название задачи
             callback_data=f"view_task:{task['id']}"
         )
-        for task in tasks if not task['status'] == 'completed' and not task['status'] == 'done'
+        for task in tasks if not task['status'] == 'завершено' and not task['status'] == 'выполнено'
     ]
 
     # Добавляем кнопки фильтрации
     filter_buttons = [
-        InlineKeyboardButton(text="✅ Выполненные задачи", callback_data="filter:done"),
-        InlineKeyboardButton(text="🛑 Завершенные задачи", callback_data="filter:completed")
+        InlineKeyboardButton(text="✅ Выполненные задачи", callback_data="filter:выполнено"),
+        InlineKeyboardButton(text="🛑 Завершенные задачи", callback_data="filter:завершено")
     ]
 
     # Генерируем клавиатуру
@@ -604,12 +604,11 @@ async def back_to_filter_list(callback_query: CallbackQuery, db: Database):
     keyboard = create_task_list_keyboard(filtered_tasks)
     await callback_query.message.edit_text(f" Задачи со статусом '{status}':", reply_markup=keyboard)
 
-@router.callback_query(F.data.startswith("filter:"))
+@router.callback_query(F.data.startswith("filter:выполнено"))
 async def filter_tasks(callback_query: CallbackQuery, db: Database):
     status = callback_query.data.split(":")[1]
-    tasks = db.get_all_tasks()
-    filtered_tasks = [task for task in tasks if task['status'] == status]
-    if not filtered_tasks:
+    tasks = db.get_all_done_tasks(status)
+    if not tasks:
         await callback_query.message.edit_text("Нет задач с выбранным статусом.")
         return
     keyboard = InlineKeyboardMarkup(
@@ -617,7 +616,26 @@ async def filter_tasks(callback_query: CallbackQuery, db: Database):
         [InlineKeyboardButton(
             text=f"{task['title'][:25]}...",  # Укороченное название задачи
             callback_data=f"view_task:{task['id']}"
-        )]for task in tasks if not task['status'] == 'pending' and not task['status'] == 'is_on_work'
+        )]for task in tasks
+    ] )
+    back_button = [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")]
+    keyboard.inline_keyboard.append(back_button)
+    await callback_query.message.edit_text(f" Задачи со статусом '{status}':", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("filter:завершено"))
+async def filter_tasks(callback_query: CallbackQuery, db: Database):
+    status = callback_query.data.split(":")[1]
+    tasks = db.get_all_completed_tasks(status)
+    if not tasks:
+        await callback_query.message.edit_text("Нет задач с выбранным статусом.")
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"{task['title'][:25]}...",  # Укороченное название задачи
+            callback_data=f"view_task:{task['id']}"
+        )]for task in tasks
     ] )
     back_button = [InlineKeyboardButton(text="Назад к списку", callback_data="back_to_task_list")]
     keyboard.inline_keyboard.append(back_button)
@@ -742,7 +760,7 @@ async def checktask_executor(callback_query, state: FSMContext, db: Database):
 @router.callback_query(F.data.startswith("approved:"))
 async def complete_task_executor(callback_query: CallbackQuery, db: Database, bot: Bot):
     task_id = callback_query.data.split(":")[1]
-    db.update_task_status(task_id, 'completed')
+    db.update_task_status(task_id, 'завершено')
     task = db.get_task_by_id(task_id)
     # Отправка уведомления в общий канал
     task_text = (
@@ -823,7 +841,7 @@ async def rejected_task_executor(callback_query: CallbackQuery, db: Database, bo
                 )
             except Exception as e:
                 print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
-        db.update_task_status(task_id, 'pending')
+        db.update_task_status(task_id, 'новая')
         await callback_query.message.answer("Задача отправлена на доработку.")
     else:
         await callback_query.message.answer("Произошла ошибка при отправке задачи на доработку.")
@@ -866,15 +884,6 @@ async def view_users_handler(message: Message, db: Database):
         await message.answer("<b>Список пользователей</b>", parse_mode="HTML" , reply_markup=keyboard)
     else:
         await message.answer("Пользователи не найдены.", parse_mode="HTML")
-
-# @router.callback_query(F.data.startswith("user_info:"))
-# async def user_info_handler(callback_query: CallbackQuery, db: Database):
-#     user_id = int(callback_query.data.split(":")[1])
-#     user = db.get_user_by_id(user_id)
-#     if user:
-#         await callback_query.message.edit_text(f"Информация о пользователе:\nUsername: {user['username']}\nRole: {user['role']}", reply_markup=role_selection_keyboard(user_id))
-#     else:
-#         await callback_query.message.edit_text("Пользователь не найден.")
 
 
 @router.callback_query(F.data.startswith("set_role:"))
@@ -930,10 +939,10 @@ async def delete_user_handler(callback_query: CallbackQuery, db: Database):
 async def admin_statistics(message: types.Message, db: Database):
     """Отображение статистики (общей и по пользователям)."""
     total_tasks = db.get_total_tasks_count()
-    pending_tasks = db.get_tasks_count_by_status("pending")
-    is_on_work_tasks = db.get_tasks_count_by_status("is_on_work")
-    done_tasks = db.get_tasks_count_by_status("done")
-    completed_tasks = db.get_tasks_count_by_status("completed")
+    pending_tasks = db.get_tasks_count_by_status("новая")
+    is_on_work_tasks = db.get_tasks_count_by_status("в работе")
+    done_tasks = db.get_tasks_count_by_status("выполнено")
+    completed_tasks = db.get_tasks_count_by_status("завершено")
     total_users = db.get_all_users_count()
     admin_users = db.get_users_count_by_role("Админ")
     executor_users = db.get_users_count_by_role("Исполнитель")
@@ -965,10 +974,10 @@ async def user_info_handler(callback_query: CallbackQuery, db: Database):
     user = db.get_user_by_id(user_id)
 
     total_user_tasks = db.get_user_tasks_count(user_id)
-    pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "pending")
-    is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "is_on_work")
-    done_user_tasks = db.get_user_tasks_count_by_status(user_id, "done")
-    completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "completed")
+    pending_user_tasks = db.get_user_tasks_count_by_status(user_id, "новая")
+    is_on_work_user_tasks = db.get_user_tasks_count_by_status(user_id, "в работе")
+    done_user_tasks = db.get_user_tasks_count_by_status(user_id, "выполнено")
+    completed_user_tasks = db.get_user_tasks_count_by_status(user_id, "завершено")
     user_score = db.get_user_score(user_id)
 
     response = (
