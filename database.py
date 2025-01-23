@@ -355,7 +355,7 @@ class Database:
         query = """
             SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
             FROM tasks
-            WHERE status = 'done'
+            WHERE status = 'выполнено'
             ORDER BY deadline ASC
         """
         return self.connection.execute(query, (status,)).fetchall()
@@ -365,7 +365,7 @@ class Database:
         query = """
             SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
             FROM tasks
-            WHERE status = 'completed'
+            WHERE status = 'завершено'
             ORDER BY deadline ASC
         """
         return self.connection.execute(query, (status,)).fetchall()
