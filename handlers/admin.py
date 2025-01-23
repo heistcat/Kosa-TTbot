@@ -607,7 +607,7 @@ async def back_to_filter_list(callback_query: CallbackQuery, db: Database):
 @router.callback_query(F.data.startswith("filter:выполнено"))
 async def filter_tasks(callback_query: CallbackQuery, db: Database):
     status = callback_query.data.split(":")[1]
-    tasks = db.get_all_done_tasks(status)
+    tasks = db.get_all_done_tasks()
     if not tasks:
         await callback_query.message.edit_text("Нет задач с выбранным статусом.")
         return
@@ -626,7 +626,7 @@ async def filter_tasks(callback_query: CallbackQuery, db: Database):
 @router.callback_query(F.data.startswith("filter:завершено"))
 async def filter_tasks(callback_query: CallbackQuery, db: Database):
     status = callback_query.data.split(":")[1]
-    tasks = db.get_all_completed_tasks(status)
+    tasks = db.get_all_completed_tasks()
     if not tasks:
         await callback_query.message.edit_text("Нет задач с выбранным статусом.")
         return
