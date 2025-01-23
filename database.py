@@ -350,7 +350,7 @@ class Database:
             return result['score']
         return 0
     
-    def get_all_done_tasks(self, status):
+    def get_all_done_tasks(self):
         """Получение всех задач с определенным статусом."""
         query = """
             SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
@@ -358,9 +358,9 @@ class Database:
             WHERE status = 'выполнено'
             ORDER BY deadline ASC
         """
-        return self.connection.execute(query, (status,)).fetchall()
+        return self.connection.execute(query).fetchall()
     
-    def get_all_completed_tasks(self, status):
+    def get_all_completed_tasks(self):
         """Получение всех задач с определенным статусом."""
         query = """
             SELECT *, strftime('%d-%m-%Y %H:%M', deadline, 'unixepoch') AS deadline_formatted
@@ -368,7 +368,7 @@ class Database:
             WHERE status = 'завершено'
             ORDER BY deadline ASC
         """
-        return self.connection.execute(query, (status,)).fetchall()
+        return self.connection.execute(query).fetchall()
         
 
     def add_user_score(self, user_id, score):
